@@ -99,7 +99,7 @@ Pages.Report = {
         if (it.type === 'measure') result = `${v.value ?? '—'} ${it.unit}（${res}）`;
         if (v.note) result += `：${v.note}`;
         if (v.defect) result += `［${defectName(v.defect)}］`;
-        out.push({ code: it.code, level: it.level, name: it.name, vi: it.vi, remark: it.remark, result, res, qty: res === 'NG' ? itemQty(it, v) : 0, fixed: it.sampling === 'fixed' });
+        out.push({ code: it.code, level: it.level, name: it.name, vi: it.vi, remark: it.remark, result, res, qty: res === 'NG' ? itemQty(it, v) : 0, fixed: it.sampling === 'fixed', photos: v.photos || [] });
       });
       return out;
     },
@@ -110,7 +110,10 @@ Pages.Report = {
       return out;
     },
     slots() { return Array.from({ length: Math.max(6, this.f.rounds.length) }, (_, k) => this.f.rounds[k] || null); },
-    photoGroups() { return this.f.items.map(i => ({ name: itemLabel(i), photos: this.f.values[i.id].photos || [] })).filter(g => g.photos.length); },
+    baseGroups() { return (this.f.basePhotoDefs || []).map(d => ({ name: d.name, vi: d.vi, photos: this.f.basePhotos[d.key] || [] })); },
+    roundGroups() { return (this.f.rounds || []).map((r, k) => ({ name: `第 ${k + 1} 轮 ${r.time}`, photos: r.photos || [] })).filter(g => g.photos.length); },
+    patrolPhotoGroups() { return this.f.items.filter(isPatrol).map(i => ({ name: itemLabel(i), photos: this.f.values[i.id].photos || [] })).filter(g => g.photos.length); },
+    allSrc() { return allPhotos(this.f).map(srcOf); },
     signItem() { const s = this.f.items.find(i => i.type === 'sign'); return s ? this.f.values[s.id].sign : ''; },
     qrCells() {
       let s = 0; for (const c of this.f.no) s = (s * 31 + c.charCodeAt(0)) % 9973;
@@ -118,6 +121,7 @@ Pages.Report = {
     },
   },
   methods: {
+    srcOf,
     print() { if (EMBEDDED) { embeddedNotice('打印或另存 PDF'); return; } window.print(); },
     back() { history.length > 1 ? history.back() : go('/ledger'); },
     box(on) { return on ? '☑' : '☐'; },
@@ -158,19 +162,27 @@ Pages.Report = {
           <tr><template v-for="L in LEVEL_KEYS" :key="L"><td>接收 {{ f.plan.levels[L].ac ?? '' }}</td><td>拒收 {{ f.plan.levels[L].re ?? '' }}</td></template></tr>
         </table>
         <table class="result-table">
-          <thead><tr><th style="width:44px">序号<small>STT</small></th><th>检验项目 / 品质要求<small>Nội dung kiểm tra / Yêu cầu</small></th><th style="width:34%">检查结果<small>Kết quả kiểm tra</small></th>
+          <thead><tr><th style="width:44px">序号<small>STT</small></th><th>检验项目 / 品质要求<small>Nội dung kiểm tra / Yêu cầu</small></th><th style="width:26%">检查结果<small>Kết quả kiểm tra</small></th>
+            <th class="ph-col">照片<small>Hình ảnh</small></th>
             <th v-for="L in LEVEL_KEYS" :key="L" style="width:40px">{{ L }}</th></tr></thead>
           <tbody>
             <template v-for="(r,i) in rows" :key="i">
-              <tr v-if="r.head" class="grp"><td colspan="3">{{ r.name }} <small>{{ r.vi }}</small></td><td>/</td><td>/</td><td>/</td></tr>
+              <tr v-if="r.head" class="grp"><td colspan="4">{{ r.name }} <small>{{ r.vi }}</small></td><td>/</td><td>/</td><td>/</td></tr>
               <tr v-else>
                 <td class="c">{{ r.code }}</td>
                 <td>{{ r.level }}-{{ r.name }}<small v-if="r.vi">{{ r.vi }}</small><small v-if="r.remark" class="muted">{{ r.remark }}</small></td>
                 <td :class="{red: r.res==='NG'}">{{ r.result }}</td>
+                <td class="ph-col"><div class="ph-cell">
+                  <div v-for="p in r.photos" :key="p.id" class="rp" :class="{bad: p.defect}">
+                    <el-image :src="srcOf(p)" :preview-src-list="allSrc" :initial-index="allSrc.indexOf(srcOf(p))" fit="cover" preview-teleported hide-on-click-modal />
+                    <span v-if="p.defect">不良</span>
+                  </div>
+                  <span v-if="!r.photos.length && r.res!=='NA'" class="red small">缺照片</span>
+                </div></td>
                 <td v-for="L in LEVEL_KEYS" :key="L" class="c b red">{{ r.level===L && r.qty ? r.qty : '' }}</td>
               </tr>
             </template>
-            <tr class="sum"><td colspan="3">缺陷累计 <small>Tổng số lỗi</small></td><td v-for="L in LEVEL_KEYS" :key="L" class="c b">{{ lc.total[L] }}</td></tr>
+            <tr class="sum"><td colspan="4">缺陷累计 <small>Tổng số lỗi</small></td><td v-for="L in LEVEL_KEYS" :key="L" class="c b">{{ lc.total[L] }}</td></tr>
           </tbody>
         </table>
       </template>
@@ -222,12 +234,23 @@ Pages.Report = {
         <tr><th>备注<small>Ghi chú</small></th><td>{{ f.header.remark }}<div v-if="f.tplNote" class="small">{{ f.tplNote }}<br><span class="muted">{{ f.tplNoteVi }}</span></div></td></tr>
       </table>
 
-      <template v-if="photoGroups.length">
-        <h3>现场照片（按检验项）<small>Hình ảnh hiện trường</small></h3>
-        <div v-for="g in photoGroups" :key="g.name" class="photo-group">
-          <div class="pg-name">{{ g.name }}</div>
-          <div class="pg-list"><figure v-for="(p,i) in g.photos" :key="p.id"><img :src="p.src" /><figcaption>{{ i+1 }} · {{ p.time }} · {{ p.by }}</figcaption></figure></div>
-        </div>
+      <h3>基础信息照片<small>Hình ảnh thông tin cơ bản</small></h3>
+      <div class="pg-list base">
+        <template v-for="g in baseGroups" :key="g.name">
+          <figure v-for="(p,i) in g.photos" :key="p.id">
+            <img :src="srcOf(p)" />
+            <figcaption><b>{{ g.name }}<template v-if="g.photos.length>1"> {{ i+1 }}</template></b> {{ g.vi }}<br>{{ p.time }} · {{ p.by }}</figcaption>
+          </figure>
+          <figure v-if="!g.photos.length"><div class="no-photo">未拍</div><figcaption><b>{{ g.name }}</b> {{ g.vi }}</figcaption></figure>
+        </template>
+      </div>
+      <template v-if="roundGroups.length">
+        <h3>每轮巡检现场照片<small>Hình ảnh mỗi lần tuần kiểm</small></h3>
+        <div class="pg-list"><figure v-for="g in roundGroups" :key="g.name"><img :src="srcOf(g.photos[0])" /><figcaption><b>{{ g.name }}</b> · {{ g.photos[0].by }}</figcaption></figure></div>
+      </template>
+      <template v-if="patrolPhotoGroups.length">
+        <h3>不良项照片<small>Hình ảnh lỗi</small></h3>
+        <div class="pg-list"><template v-for="g in patrolPhotoGroups" :key="g.name"><figure v-for="p in g.photos" :key="p.id" :class="{bad: p.defect}"><img :src="srcOf(p)" /><figcaption><b>{{ g.name }}</b> · {{ p.time }}</figcaption></figure></template></div>
       </template>
       <div class="sheet-foot">{{ f.docNo }} · 本报告由质检数字化管理系统生成 · 扫右上角二维码查看原始记录与照片</div>
     </div>

@@ -134,7 +134,7 @@ Pages.Templates = {
     create() {
       const type = this.type || 'IQC';
       const id = `TPL-${type}-${String(store.templates.filter(t => t.type === type).length + 1).padStart(3, '0')}`;
-      const base = { id, docNo: '', name: `新建${TYPES[type].short}模版`, nameVi: '', type, version: 0, status: '草稿', updatedAt: ymd(new Date()), bind: { materials: [], processes: [] }, ngPhoto: true, note: '', noteVi: '' };
+      const base = { id, docNo: '', name: `新建${TYPES[type].short}模版`, nameVi: '', type, version: 0, status: '草稿', updatedAt: ymd(new Date()), bind: { materials: [], processes: [] }, ngPhoto: true, itemPhoto: 'all', basePhotos: [], note: '', noteVi: '' };
       if (type === 'IPQC') Object.assign(base, { patrol: { rounds: 6, perRound: 10, intervalH: 2 }, items: [I('新巡检项', 'check', { code: 'A1' })] });
       else Object.assign(base, { plan: { method: 'MIL-STD-105E II', aql: { CR: 0, MAJ: 2.5, MIN: 4.0 }, fixed: null }, items: [I('外观', 'judge', { code: 'A1', mustPhoto: true })] });
       store.templates.unshift(base);
@@ -165,7 +165,7 @@ Pages.Templates = {
 Pages.Designer = {
   props: ['params'],
   components: { ItemField: Widgets.ItemField },
-  setup() { return { store, TYPES, FIELD_TYPES, MASTER, AQL_LEVELS, LEVELS, LEVEL_KEYS, SAMPLING_METHODS, go, isPatrol }; },
+  setup() { return { store, TYPES, FIELD_TYPES, MASTER, AQL_LEVELS, LEVELS, LEVEL_KEYS, SAMPLING_METHODS, go, isPatrol, uid }; },
   data() {
     const src = store.templates.find(t => t.id === this.params.id);
     return { src, tpl: src ? clone(src) : null, sel: null };
@@ -216,7 +216,24 @@ Pages.Designer = {
             <el-form-item label="越南文名称"><el-input v-model="tpl.nameVi" /></el-form-item>
             <el-form-item v-if="tpl.type==='IQC'" label="适用物料"><el-select v-model="tpl.bind.materials" multiple collapse-tags placeholder="选择物料"><el-option v-for="m in MASTER.materials" :key="m.code" :label="m.name" :value="m.code" /></el-select></el-form-item>
             <el-form-item label="未匹配时作为默认模版"><el-switch v-model="tpl.isDefault" /></el-form-item>
-            <el-form-item label="判 NG 时必须拍照"><el-switch v-model="tpl.ngPhoto" /></el-form-item>
+          </el-form>
+        </el-card>
+        <el-card shadow="never" class="panel">
+          <template #header>拍照要求</template>
+          <el-form label-position="top" size="small" :disabled="!canEdit">
+            <el-form-item label="检验项拍照">
+              <el-radio-group v-model="tpl.itemPhoto"><el-radio-button value="all">每项必拍</el-radio-button><el-radio-button value="ng">只拍不合格</el-radio-button></el-radio-group>
+            </el-form-item>
+            <p class="muted small" style="margin:-6px 0 10px">判不合格时一律要当场拍不良部位照片，这条不能关闭。判 NA 的项不用拍。</p>
+            <el-form-item v-if="tpl.patrol" label="每轮巡检至少拍几张现场照片"><el-input-number v-model="tpl.patrol.roundPhoto" :min="0" :max="5" /></el-form-item>
+            <div class="side-lbl">基础信息照片（每张单据必拍）</div>
+            <div v-for="(b,i) in (tpl.basePhotos||[])" :key="i" class="bp-edit">
+              <el-input v-model="b.name" placeholder="名称，如 外箱唛头" />
+              <el-input v-model="b.vi" placeholder="越南文" />
+              <el-input-number v-model="b.min" :min="1" :max="5" :controls="false" title="至少几张" />
+              <el-button text type="danger" :icon="'Delete'" @click="tpl.basePhotos.splice(i,1)" />
+            </div>
+            <el-button size="small" :icon="'Plus'" @click="(tpl.basePhotos = tpl.basePhotos || []).push({ key: 'p' + uid(), name: '', vi: '', min: 1 })">添加照片位</el-button>
           </el-form>
         </el-card>
         <el-card shadow="never" class="panel" v-if="tpl.plan">
@@ -309,7 +326,7 @@ Pages.Designer = {
         <div class="phone">
           <div class="phone-bar">{{ tpl.docNo }} {{ tpl.name }}</div>
           <div class="phone-body">
-            <ItemField v-for="(it,i) in tpl.items" :key="it.id+JSON.stringify(it)" :index="i+1" :item="it" :val="pv[it.id]" form-no="预览" inspector="检验员" preview :ng-photo="tpl.ngPhoto" />
+            <ItemField v-for="(it,i) in tpl.items" :key="it.id+JSON.stringify(it)" :index="i+1" :item="it" :val="pv[it.id]" form-no="预览" inspector="检验员" preview :photo-all="tpl.itemPhoto==='all'" />
           </div>
         </div>
         <p class="muted small center">手机端实时预览</p>

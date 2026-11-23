@@ -182,6 +182,13 @@ Pages.Form = {
     doneCount() { return this.judgeItems.filter(i => !!itemResult(i, this.f.values[i.id])).length; },
     materials() { return this.f.header.supplier ? MASTER.materials.filter(m => m.supplier === this.f.header.supplier) : MASTER.materials; },
     verdict() { return this.f.result || this.summary.suggest; },
+    pool() { return allPhotos(this.f); },
+    photoProgress() { // 还缺照片的项目数
+      const rule = photoRule(this.f);
+      const lack = this.f.items.filter(it => { const v = this.f.values[it.id]; return (v.photos || []).length < photoNeed(it, v, rule) || defectPhotoMissing(it, v); }).length
+        + (this.f.basePhotoDefs || []).filter(d => (this.f.basePhotos[d.key] || []).length < d.min).length;
+      return lack;
+    },
   },
   methods: {
     load() {
@@ -329,18 +336,31 @@ Pages.Form = {
           </el-form>
         </el-card>
 
+        <!-- 基础信息照片：每张单据必拍，合格也要拍 -->
+        <el-card v-if="f.basePhotoDefs && f.basePhotoDefs.length" shadow="never" class="panel">
+          <template #header><div class="panel-h"><Bi zh="基础信息照片" vi="Hình ảnh thông tin cơ bản" inline />
+            <span class="muted small">合格也要拍，报告里会附上</span></div></template>
+          <div class="base-photos">
+            <div v-for="d in f.basePhotoDefs" :key="d.key" class="bp-slot" :class="{lack: (f.basePhotos[d.key]||[]).length < d.min}">
+              <div class="bp-name"><Bi :zh="d.name" :vi="d.vi" /><small class="muted">至少 {{ d.min }} 张</small></div>
+              <PhotoCell :photos="f.basePhotos[d.key]" :item-name="d.name" :form-no="f.no" :inspector="f.inspector" :readonly="!editable" :min="d.min" :pool="pool" />
+            </div>
+          </div>
+        </el-card>
+
         <!-- 进料 / 成品：检验项目 -->
         <template v-if="f.type!=='IPQC'">
           <div class="items-head">
             <h3><Bi zh="检验项目" :vi="f.type==='IQC'?'Nội dung kiểm tra':'Hạng mục rút kiểm'" inline /></h3>
-            <span class="muted">已完成 {{ doneCount }} / {{ judgeItems.length }}</span>
+            <span class="muted">已判定 {{ doneCount }} / {{ judgeItems.length }}</span>
+            <span v-if="f.itemPhoto==='all'" class="photo-rule">每项都要拍照（NA 除外）</span>
             <span class="spacer"></span>
             <el-button v-if="editable" size="small" @click="allOk">未判定的全部 OK</el-button>
           </div>
           <div v-for="b in blocks" :key="b.group" class="item-block">
             <div v-if="b.group" class="block-h"><Bi :zh="b.group" :vi="b.vi" inline /></div>
             <div class="items">
-              <ItemField v-for="(it,i) in b.items" :key="it.id" :index="i+1" :item="it" :val="f.values[it.id]" :readonly="!editable" :form-no="f.no" :inspector="f.inspector" :ng-photo="f.ngPhoto" />
+              <ItemField v-for="(it,i) in b.items" :key="it.id" :index="i+1" :item="it" :val="f.values[it.id]" :readonly="!editable" :form-no="f.no" :inspector="f.inspector" :ng-photo="f.ngPhoto" :photo-all="f.itemPhoto==='all'" :pool="pool" />
             </div>
           </div>
         </template>
@@ -410,7 +430,7 @@ Pages.Form = {
             <div class="sum-row"><Bi zh="巡检不良率" vi="Tỉ lệ không đạt" inline /><b :class="{red: summary.patrolNg}">{{ summary.patrolRate }}%</b></div>
           </template>
 
-          <div class="sum-row"><span>照片</span><b>{{ summary.photoCount }} 张</b></div>
+          <div class="sum-row"><span>照片</span><b>{{ summary.photoCount }} 张<small v-if="editable && photoProgress" class="red">（{{ photoProgress }} 处缺照片）</small></b></div>
           <div class="sum-row" v-if="summary.mainDefect"><span>不良项</span><b class="ellipsis" style="max-width:170px" :title="summary.mainDefect">{{ summary.mainDefect }}</b></div>
           <div class="verdict" :class="verdict.toLowerCase()">
             <small>{{ f.result ? '检验结果' : '系统建议判定' }}</small>{{ RESULTS[verdict].zh }}<small v-if="store.showVi">{{ RESULTS[verdict].vi }}</small>

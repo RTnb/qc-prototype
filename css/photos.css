@@ -1,0 +1,51 @@
+/* ============ 照片证据：基础信息照片、引用照片、不良照片、报告缩略图 ============ */
+.base-photos { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+.bp-slot { border: 1px solid var(--line); border-radius: 8px; padding: 10px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.bp-slot.lack { border-color: #f0b4b4; background: #fffafa; }
+.bp-name { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; font-size: 13.5px; font-weight: 600; }
+.bp-name small { font-weight: 400; white-space: nowrap; }
+.photo-rule { font-size: 12px; color: var(--amber); background: #fdf3e2; border-radius: 10px; padding: 1px 9px; }
+.thumb-ref { position: absolute; left: 4px; bottom: 4px; background: rgba(47, 111, 214, .9); color: #fff; font-size: 10.5px; border-radius: 4px; padding: 0 5px; line-height: 16px; }
+.thumb-ref.bad { background: rgba(214, 69, 69, .95); }
+.thumb.add.pool { border-style: dashed; color: var(--primary); }
+.thumb.add.bad { border-color: var(--ng); color: var(--ng); background: #fff6f6; }
+.defect-hint { flex-basis: 100%; font-size: 12px; color: var(--ng); font-weight: 600; }
+.pool-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; max-height: 60vh; overflow-y: auto; }
+.pool-grid figure { margin: 0; position: relative; border: 2px solid transparent; border-radius: 8px; overflow: hidden; cursor: pointer; background: var(--bg); }
+.pool-grid figure img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; display: block; }
+.pool-grid figcaption { font-size: 11px; color: var(--ink-2); padding: 3px 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pool-grid .tick { position: absolute; right: 6px; top: 6px; width: 22px; height: 22px; border-radius: 50%; background: rgba(0,0,0,.35); color: #fff; display: grid; place-items: center; font-size: 13px; }
+.pool-grid figure.on { border-color: var(--primary); }
+.pool-grid figure.on .tick { background: var(--primary); }
+.round-photos { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 4px 10px 8px; }
+.round-photos .lbl { font-size: 13px; font-weight: 600; display: flex; flex-direction: column; }
+.round-photos .lbl small { font-weight: 400; color: var(--ink-3); font-size: 11.5px; }
+.bp-edit { display: grid; grid-template-columns: 1.2fr 1fr 50px auto; gap: 6px; margin-bottom: 6px; }
+
+/* 报告里的照片 */
+.result-table .ph-col { width: 150px; }
+.ph-cell { display: flex; flex-wrap: wrap; gap: 4px; }
+.rp { position: relative; width: 64px; height: 48px; border: 1px solid #cfd5df; }
+.rp .el-image { width: 100%; height: 100%; display: block; }
+.rp.bad { border: 2px solid var(--ng); }
+.rp span { position: absolute; left: 0; bottom: 0; background: var(--ng); color: #fff; font-size: 10px; padding: 0 3px; line-height: 14px; }
+.pg-list.base figure img + img { margin-top: 4px; }
+.pg-list figure.bad img { outline: 2px solid var(--ng); }
+.no-photo { aspect-ratio: 4 / 3; border: 1px dashed var(--ng); color: var(--ng); display: grid; place-items: center; font-size: 13px; }
+
+@media (max-width: 767px) {
+  .base-photos { grid-template-columns: minmax(0, 1fr); }
+  .result-table .ph-col { width: 72px; }
+  .rp { width: 52px; height: 40px; }
+}
+@media print {
+  .rp { width: 72px; height: 54px; }
+}
+.items-head { flex-wrap: wrap; row-gap: 6px; }
+.items-head h3 { white-space: nowrap; }
+@media (max-width: 767px) {
+  .base-photos { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .bp-slot { padding: 8px; }
+  .bp-name { flex-direction: column; gap: 2px; font-size: 13px; }
+  .items-head .photo-rule { order: 5; }
+}

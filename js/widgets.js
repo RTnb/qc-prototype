@@ -68,11 +68,26 @@ async function processPhoto(file, mark, maxSide = 1280) {
 }
 
 Widgets.PhotoCell = {
-  props: { photos: Array, itemName: String, formNo: String, inspector: String, readonly: Boolean, min: Number, preview: Boolean, compact: Boolean },
-  data() { return { busy: false }; },
-  computed: { srcList() { return this.photos.map(p => p.src); } },
+  props: { photos: Array, itemName: String, formNo: String, inspector: String, readonly: Boolean, min: Number, preview: Boolean, compact: Boolean, pool: Array, defectMode: Boolean },
+  data() { return { busy: false, picking: false, chosen: [] }; },
+  computed: {
+    srcList() { return this.photos.map(srcOf); },
+    needDefect() { return this.defectMode && !this.photos.some(isDefectPhoto); },
+    poolLeft() { // 本单其它已拍照片（排除本格已有的）
+      const mine = new Set(this.photos.map(p => p.src || (p.ph + '|' + p.hue)));
+      return (this.pool || []).filter(p => !mine.has(p.src || (p.ph + '|' + p.hue)));
+    },
+  },
   methods: {
+    srcOf,
     pick() { if (this.preview) { ElementPlus.ElMessage.info('预览模式：实际使用时会调起手机后置相机'); return; } this.$refs.file.click(); },
+    openPool() { this.chosen = []; this.picking = true; },
+    toggle(p) { const i = this.chosen.indexOf(p); i < 0 ? this.chosen.push(p) : this.chosen.splice(i, 1); },
+    usePool() {
+      this.chosen.forEach(p => { const { from, ...rest } = p; this.photos.push({ ...rest, id: uid(), ref: true }); });
+      if (this.chosen.length) ElementPlus.ElMessage.success(`已引用 ${this.chosen.length} 张本单照片`);
+      this.picking = false;
+    },
     async onFiles(e) {
       const files = [...e.target.files]; e.target.value = '';
       if (!files.length) return;
@@ -80,8 +95,9 @@ Widgets.PhotoCell = {
       try {
         for (const file of files) {
           const time = nowStr();
-          const r = await processPhoto(file, { time, no: this.formNo || '未编号', item: this.itemName, by: this.inspector });
-          this.photos.push({ id: uid(), src: r.src, time, by: this.inspector, sample: this.photos.length + 1, kb: r.kb });
+          const item = (this.defectMode ? '不良 · ' : '') + this.itemName;
+          const r = await processPhoto(file, { time, no: this.formNo || '未编号', item, by: this.inspector });
+          this.photos.push({ id: uid(), src: r.src, time, by: this.inspector, sample: this.photos.length + 1, kb: r.kb, defect: this.defectMode || undefined });
         }
         ElementPlus.ElMessage.success(`已上传 ${files.length} 张（已压缩并加水印）`);
       } catch (err) { ElementPlus.ElMessage.error('图片处理失败'); }
@@ -92,16 +108,32 @@ Widgets.PhotoCell = {
   template: `
   <div class="photo-cell" :class="{compact}">
     <div v-for="(p,i) in photos" :key="p.id" class="thumb">
-      <el-image :src="p.src" :preview-src-list="srcList" :initial-index="i" fit="cover" preview-teleported hide-on-click-modal />
+      <el-image :src="srcOf(p)" :preview-src-list="srcList" :initial-index="i" fit="cover" preview-teleported hide-on-click-modal />
       <span class="thumb-no">{{ i+1 }}</span>
+      <span v-if="p.ref" class="thumb-ref">引用</span>
+      <span v-else-if="p.defect" class="thumb-ref bad">不良</span>
       <button v-if="!readonly" class="thumb-del" @click.stop="remove(i)" title="删除">×</button>
     </div>
-    <button v-if="!readonly" class="thumb add" :class="{need: min && photos.length < min}" @click="pick" v-loading="busy">
+    <button v-if="!readonly" class="thumb add" :class="{need: (min && photos.length < min) || needDefect, bad: defectMode}" @click="pick" v-loading="busy">
       <el-icon :size="compact?18:22"><Camera /></el-icon>
-      <span>{{ min && photos.length < min ? '需 '+min+' 张' : '拍照' }}</span>
+      <span>{{ defectMode ? '拍不良部位' : (min && photos.length < min ? '需 '+min+' 张' : '拍照') }}</span>
     </button>
+    <button v-if="!readonly && poolLeft.length" class="thumb add pool" @click="openPool">
+      <el-icon :size="compact?16:20"><PictureFilled /></el-icon>
+      <span>选本单已拍</span>
+    </button>
+    <el-dialog v-model="picking" title="选本单已拍的照片" width="min(560px, 94vw)" append-to-body>
+      <p class="muted small" style="margin:0 0 10px">一张照片能证明多个项目时直接引用，不用重复拍。</p>
+      <div class="pool-grid">
+        <figure v-for="p in poolLeft" :key="p.id" :class="{on: chosen.includes(p)}" @click="toggle(p)">
+          <img :src="srcOf(p)" alt="" /><figcaption>{{ p.from }}</figcaption><span class="tick">✓</span>
+        </figure>
+      </div>
+      <template #footer><el-button @click="picking=false">取消</el-button><el-button type="primary" :disabled="!chosen.length" @click="usePool">引用 {{ chosen.length || '' }} 张</el-button></template>
+    </el-dialog>
     <input ref="file" type="file" accept="image/*" :capture="store.settings.allowAlbum ? undefined : 'environment'" multiple hidden @change="onFiles" />
     <span v-if="readonly && !photos.length" class="muted small">无照片</span>
+    <span v-if="needDefect && !readonly" class="defect-hint">判不合格：必须当场拍一张不良部位的照片</span>
   </div>`,
   setup() { return { store }; },
 };
@@ -140,19 +172,14 @@ Widgets.SignPad = {
 
 /* ---------- 检验项（进料 / 成品报告的一行） ---------- */
 Widgets.ItemField = {
-  props: { item: Object, val: Object, readonly: Boolean, formNo: String, inspector: String, preview: Boolean, index: Number, ngPhoto: { type: Boolean, default: true } },
+  props: { item: Object, val: Object, readonly: Boolean, formNo: String, inspector: String, preview: Boolean, index: Number, ngPhoto: { type: Boolean, default: true }, photoAll: Boolean, pool: Array },
   components: { PhotoCell: Widgets.PhotoCell, SignPad: Widgets.SignPad },
   setup() { return { MASTER, FIELD_TYPES, store, isPatrol }; },
   data() { return { showNote: false }; },
   computed: {
     res() { return itemResult(this.item, this.val); },
     stats() { return this.item.type === 'table' ? tableStats(this.item, this.val.rows || []) : []; },
-    needPhoto() {
-      const it = this.item;
-      let n = it.type === 'photo' ? (it.minPhotos || 1) : (it.mustPhoto ? (it.minPhotos || 1) : 0);
-      if (this.res === 'NG' && this.ngPhoto) n = Math.max(n, 1);
-      return n;
-    },
+    needPhoto() { return photoNeed(this.item, this.val, { all: this.photoAll, ng: this.ngPhoto }); },
     ngQty() { return this.res === 'NG' ? itemQty(this.item, this.val) : 0; },
   },
   methods: {
@@ -230,7 +257,7 @@ Widgets.ItemField = {
     </div>
 
     <div v-if="needPhoto || item.type==='photo' || (val.photos && val.photos.length)" class="item-photos">
-      <PhotoCell :photos="val.photos" :item-name="(item.code?item.code+' ':'')+item.name" :form-no="formNo" :inspector="inspector" :readonly="readonly" :min="needPhoto" :preview="preview" />
+      <PhotoCell :photos="val.photos" :item-name="(item.code?item.code+' ':'')+item.name" :form-no="formNo" :inspector="inspector" :readonly="readonly" :min="needPhoto" :preview="preview" :pool="pool" :defect-mode="res==='NG'" />
     </div>
   </div>`,
 };
@@ -252,7 +279,8 @@ Widgets.PatrolSheet = {
       });
       return out;
     },
-    round() { return this.f.rounds[this.cur]; },
+    round() { const r = this.f.rounds[this.cur]; if (r && !r.photos) r.photos = []; return r; },
+    pool() { return allPhotos(this.f); },
     roundStat() {
       return this.f.rounds.map((r, k) => {
         let fill = 0, ng = 0, all = 0;
@@ -264,7 +292,7 @@ Widgets.PatrolSheet = {
   methods: {
     addRound() {
       if (this.f.rounds.length >= this.maxRounds) { ElementPlus.ElMessage.warning(`本页最多 ${this.maxRounds} 轮，请新建下一页`); return; }
-      this.f.rounds.push({ time: hm(), by: this.f.inspector, qty: (this.f.tplPatrol && this.f.tplPatrol.perRound) || 10 });
+      this.f.rounds.push({ time: hm(), by: this.f.inspector, qty: (this.f.tplPatrol && this.f.tplPatrol.perRound) || 10, photos: [] });
       this.f.items.forEach(it => { if (isPatrol(it)) this.f.values[it.id].cells.push({ v: it.type === 'check' ? '' : null, ng: false }); });
       this.cur = this.f.rounds.length - 1; this.mode = 'round';
     },
@@ -280,6 +308,8 @@ Widgets.PatrolSheet = {
     toggleNg(it) { if (!this.editable) return; const c = this.cell(it); c.ng = !c.ng; },
     allOk() { this.f.items.forEach(it => { if (it.type === 'check') { const c = this.cell(it); if (!c.v) c.v = 'OK'; } }); },
     isNG(it, k) { return cellNG(it, this.cell(it, k)); },
+    itemNG(it) { return itemResult(it, this.f.values[it.id]) === 'NG'; },
+    isDefectPhoto,
     show(it, k) { const c = this.cell(it, k); if (!cellFilled(it, c)) return ''; return it.type === 'check' ? (c.v === 'OK' ? '✓' : '✗') : c.v; },
   },
   template: `
@@ -305,6 +335,10 @@ Widgets.PatrolSheet = {
         <el-button v-if="editable" size="small" @click="allOk">未填的判定项全部 ✓</el-button>
         <el-button v-if="editable && cur===f.rounds.length-1" size="small" text type="danger" @click="removeRound">删除本轮</el-button>
       </div>
+      <div class="round-photos">
+        <span class="lbl">本轮现场照片<small v-if="f.roundPhoto">（至少 {{ f.roundPhoto }} 张）</small><small v-if="store.showVi" class="vi">Hình ảnh hiện trường</small></span>
+        <PhotoCell :photos="round.photos" :item-name="'第'+(cur+1)+'轮巡检 '+round.time" :form-no="f.no" :inspector="f.inspector" :readonly="!editable" :min="f.roundPhoto" compact />
+      </div>
       <div v-for="g in groups" :key="g.name" class="p-group">
         <div class="p-group-h"><Bi :zh="g.name" :vi="g.vi" inline /></div>
         <div v-for="it in g.items" :key="it.id" class="p-row" :class="{ng: isNG(it)}">
@@ -325,8 +359,8 @@ Widgets.PatrolSheet = {
               <el-icon><Camera /></el-icon><small v-if="f.values[it.id].photos.length">{{ f.values[it.id].photos.length }}</small>
             </button>
           </span>
-          <div v-if="openPhoto[it.id] || (isNG(it) && f.ngPhoto && !f.values[it.id].photos.length)" class="p-photos">
-            <PhotoCell :photos="f.values[it.id].photos" :item-name="it.code+' '+it.name" :form-no="f.no" :inspector="f.inspector" :readonly="!editable" :min="isNG(it)&&f.ngPhoto?1:0" compact />
+          <div v-if="openPhoto[it.id] || (itemNG(it) && !f.values[it.id].photos.some(isDefectPhoto))" class="p-photos">
+            <PhotoCell :photos="f.values[it.id].photos" :item-name="it.code+' '+it.name" :form-no="f.no" :inspector="f.inspector" :readonly="!editable" :min="itemNG(it)?1:0" :pool="pool" :defect-mode="itemNG(it)" compact />
           </div>
         </div>
       </div>

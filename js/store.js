@@ -110,6 +110,15 @@ function placeholderPhoto(label, hue = 210) {
 <text x="12" y="231" font-size="11" fill="#fff" opacity=".8" font-family="sans-serif">原型演示数据</text></svg>`;
   return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
 }
+/* 照片地址：演示照片只存标签，显示时再生成，节省浏览器存储 */
+const _phCache = new Map();
+function srcOf(p) {
+  if (!p) return '';
+  if (p.src) return p.src;
+  const k = p.ph + '|' + p.hue;
+  if (!_phCache.has(k)) _phCache.set(k, placeholderPhoto(p.ph, p.hue));
+  return _phCache.get(k);
+}
 
 /* ---------- 基础数据（演示用，正式上线时从 Excel 导入） ---------- */
 const MASTER = {
@@ -158,9 +167,16 @@ function I(name, type, o = {}) {
 }
 const G = (code, zh, vi) => ({ group: code ? `${code} ${zh}` : zh, groupVi: vi });
 
+/* 基础信息照片：每张单据必拍，合格也要拍 */
+const BP = (key, name, vi, min = 1) => ({ key, name, vi, min });
+const BASE_IQC = () => [BP('pack', '来料外包装及标签', 'Bao bì và nhãn hàng nhập'), BP('doc', '送货单 / 供应商出货报告', 'Phiếu giao hàng / Báo cáo xuất hàng'), BP('sample', '抽检样品全貌', 'Toàn bộ mẫu rút kiểm')];
+const BASE_IPQC = () => [BP('line', '生产线现场', 'Hiện trường chuyền sản xuất'), BP('first', '当班首件产品', 'Sản phẩm đầu tiên của ca')];
+const BASE_FQC = () => [BP('carton', '外箱唛头', 'Tem thùng carton'), BP('box', '产品包装（彩盒）', 'Đóng gói sản phẩm'), BP('product', '产品外观（正面、侧面）', 'Ngoại quan sản phẩm', 2), BP('burn', '燃烧测试', 'Thử nghiệm đốt cháy')];
+
 const TPL_IQC_GLASS = {
   id: 'TPL-IQC-001', docNo: 'SL/QR-35', name: '进料检验报告（玻璃杯-透明）', nameVi: 'Báo cáo kiểm tra nguyên liệu đầu vào', type: 'IQC',
   version: 1, status: '已发布', updatedAt: '2026-11-06', bind: { materials: ['M-GL-01', 'M-GL-02'], processes: [] }, ngPhoto: true,
+  itemPhoto: 'all', basePhotos: BASE_IQC(),
   plan: { method: 'MIL-STD-105E II', aql: { CR: 0, MAJ: 2.5, MIN: 2.5 }, fixed: { n: 5, ac: { CR: 0, MAJ: 1, MIN: 1 } } },
   note: '规格和性能检验按照 5PCS 每批次进行抽样，判定标准是：CR: 0 PCS；MAJ ≤ 1 PCS；MIN ≤ 1 PCS',
   noteVi: 'Kiểm nghiệm quy cách và tính năng thì rút kiểm mẫu 5 cái cho mỗi lô hàng, tiêu chuẩn quyết định là: CR: 0 PCS; MAJ ≤ 1 PCS; MIN ≤ 1 PCS',
@@ -180,6 +196,7 @@ const TPL_IQC_GLASS = {
 const TPL_IQC_GENERAL = {
   id: 'TPL-IQC-099', docNo: 'SL/QR-35', name: '进料检验报告（通用）', nameVi: 'Báo cáo kiểm tra nguyên liệu đầu vào', type: 'IQC',
   version: 1, status: '已发布', updatedAt: '2026-11-06', bind: { materials: [], processes: [] }, isDefault: true, ngPhoto: true,
+  itemPhoto: 'all', basePhotos: BASE_IQC(),
   plan: { method: 'MIL-STD-105E II', aql: { CR: 0, MAJ: 2.5, MIN: 2.5 }, fixed: { n: 5, ac: { CR: 0, MAJ: 1, MIN: 1 } } },
   note: '规格和性能检验按照 5PCS 每批次进行抽样，判定标准是：CR: 0 PCS；MAJ ≤ 1 PCS；MIN ≤ 1 PCS', noteVi: '',
   items: [
@@ -228,7 +245,8 @@ function patrolItems() {
 const TPL_IPQC = {
   id: 'TPL-IPQC-001', docNo: 'SL/QR-36-02', name: '杯蜡在线巡检稽查表', nameVi: 'Bảng kiểm tra tuần kiểm sáp ly trên chuyền', type: 'IPQC',
   version: 1, status: '已发布', updatedAt: '2026-11-03', bind: { materials: [], processes: [] }, isDefault: true, ngPhoto: true,
-  patrol: { rounds: 6, perRound: 10, intervalH: 2 },
+  patrol: { rounds: 6, perRound: 10, intervalH: 2, roundPhoto: 1 },
+  itemPhoto: 'ng', basePhotos: BASE_IPQC(),
   note: '每 2 小时巡检 1 次；每次抽查 10 PCS', noteVi: 'Mỗi 2 giờ tuần kiểm 1 lần, mỗi lần rút kiểm 10 cái',
   items: patrolItems(),
 };
@@ -280,6 +298,7 @@ const TPL_FQC = {
   id: 'TPL-FQC-001', docNo: 'SL/QR-38', name: '成品检验报告', nameVi: 'Báo cáo kiểm nghiệm thành phẩm', type: 'FQC',
   version: 1, status: '已发布', updatedAt: '2026-11-03', bind: { materials: [], processes: [] }, isDefault: true, ngPhoto: true,
   plan: { method: 'MIL-STD-105E II', aql: { CR: 0, MAJ: 2.5, MIN: 4.0 } },
+  itemPhoto: 'all', basePhotos: BASE_FQC(),
   note: '纸质表上 MAJ / MIN 的 AQL 为空白，原型暂按 MAJ 2.5、MIN 4.0，可在模版中修改', noteVi: '',
   items: fqcItems(),
 };
@@ -302,6 +321,7 @@ function newFormSkeleton(type, no, date = new Date()) {
       workshop: '', orderQty: null, temp: null, humidity: null, page: 1, remark: '',
     },
     tplId: '', tplVersion: null, tplName: '', docNo: '', tplPlan: null, tplPatrol: null, tplNote: '', tplNoteVi: '', ngPhoto: true,
+    itemPhoto: 'ng', roundPhoto: 0, basePhotoDefs: [], basePhotos: {},
     items: [], values: {}, plan: null, rounds: [], problems: [],
     inspector: '', reviewer: '', reviewComment: '', submittedAt: '', reviewedAt: '', ncrNo: '', ncrResult: '',
     defects: 0, photoCount: 0, mainDefect: '', levelCount: null,
@@ -333,6 +353,12 @@ function applyTemplate(f, templates, tpl) {
     tplNote: tpl.note || '', tplNoteVi: tpl.noteVi || '', items: clone(tpl.items), values: {},
   });
   f.items.forEach(it => { f.values[it.id] = blankValue(it, f.rounds.length); });
+  // 基础信息照片：换模版时同名照片位保留已拍的照片
+  const old = f.basePhotos || {};
+  f.basePhotoDefs = clone(tpl.basePhotos || []);
+  f.basePhotos = {}; f.basePhotoDefs.forEach(d => { f.basePhotos[d.key] = old[d.key] || []; });
+  f.itemPhoto = tpl.itemPhoto || 'ng';
+  f.roundPhoto = (tpl.patrol && tpl.patrol.roundPhoto) || 0;
   if (tpl.plan) f.header.method = tpl.plan.method;
   resolveSpec(f);
 }
@@ -407,10 +433,34 @@ function itemQty(it, v) {
   if (isPatrol(it)) return (v.cells || []).filter(c => cellNG(it, c)).length;
   return 1;
 }
+/** 这一项至少要几张照片：模版设「每项必拍」时合格也要拍；判 NA 的不用拍 */
+function photoNeed(it, v, rule = {}) {
+  const res = itemResult(it, v);
+  let n = it.type === 'photo' ? (it.minPhotos || 1) : (it.mustPhoto ? (it.minPhotos || 1) : 0);
+  if (rule.all && ['judge', 'measure', 'table'].includes(it.type)) n = Math.max(n, 1);
+  if (res === 'NG') n = Math.max(n, 1);
+  if (res === 'NA') n = 0;
+  return n;
+}
+function photoRule(f) { return { all: f.itemPhoto === 'all' }; }
+/** 判 NG 必须有一张「不良部位」照片：当场新拍、标记为不良，引用的照片不算 */
+const isDefectPhoto = p => p && p.defect && !p.ref;
+function defectPhotoMissing(it, v) { return itemResult(it, v) === 'NG' && !(v.photos || []).some(isDefectPhoto); }
+/** 本单所有照片（供「选本单已拍」引用） */
+function allPhotos(f) {
+  const out = [];
+  (f.basePhotoDefs || []).forEach(d => (f.basePhotos[d.key] || []).forEach(p => out.push({ ...p, from: d.name })));
+  (f.rounds || []).forEach((r, k) => (r.photos || []).forEach(p => out.push({ ...p, from: `第${k + 1}轮 ${r.time}` })));
+  f.items.forEach(it => (f.values[it.id].photos || []).forEach(p => out.push({ ...p, from: itemLabel(it) })));
+  const seen = new Set();
+  return out.filter(p => { const k = p.src || (p.ph + '|' + p.hue); if (seen.has(k)) return false; seen.add(k); return true; });
+}
 /** 纯计算，不改单据（页面实时显示用） */
 function summarize(f) {
   const lv = { aql: { CR: 0, MAJ: 0, MIN: 0 }, fixed: { CR: 0, MAJ: 0, MIN: 0 } };
   let ngItems = 0, photos = 0, pTotal = 0, pNg = 0; const names = [];
+  Object.values(f.basePhotos || {}).forEach(a => { photos += a.length; });
+  (f.rounds || []).forEach(r => { photos += (r.photos || []).length; });
   f.items.forEach(it => {
     const v = f.values[it.id];
     photos += (v.photos || []).length;
@@ -453,6 +503,9 @@ function validateForm(f) {
   if (f.type === 'IPQC') { if (!h.product) errs.push('请选择产品'); if (!h.order) errs.push('请填写订单号/货号'); if (!f.rounds.length) errs.push('至少完成 1 轮巡检'); }
   if (f.type === 'FQC') { if (!h.customer) errs.push('请选择客户'); if (!h.product) errs.push('请选择产品'); if (!h.qty) errs.push('请填写生产数量'); if (!h.order) errs.push('请填写订单号'); }
   if (f.plan && f.plan.method === '其他' && !f.plan.n) errs.push('「其他抽样计划」请填写抽样数量');
+  (f.basePhotoDefs || []).forEach(d => { if ((f.basePhotos[d.key] || []).length < d.min) errs.push(`基础信息照片「${d.name}」至少需要 ${d.min} 张`); });
+  if (f.roundPhoto) f.rounds.forEach((r, k) => { if ((r.photos || []).length < f.roundPhoto) errs.push(`第 ${k + 1} 轮（${r.time}）需要拍 ${f.roundPhoto} 张现场照片`); });
+  const rule = photoRule(f), lackPhoto = [];
   f.items.forEach(it => {
     const v = f.values[it.id], r = itemResult(it, v), label = itemLabel(it);
     if (it.required) {
@@ -464,10 +517,11 @@ function validateForm(f) {
       if (it.type === 'sign' && !v.sign) errs.push(`「${label}」未签名`);
     }
     if (r === 'NG' && it.type === 'judge' && !v.note && !v.defect) errs.push(`「${label}」判 NG，请填写检查结果（不良描述）`);
-    let need = it.type === 'photo' ? (it.minPhotos || 1) : (it.mustPhoto ? (it.minPhotos || 1) : 0);
-    if (r === 'NG' && f.ngPhoto) need = Math.max(need, 1);
-    if (need && (v.photos || []).length < need) errs.push(`「${label}」${r === 'NG' ? '判 NG，' : ''}至少需要 ${need} 张照片`);
+    const need = photoNeed(it, v, rule);
+    if (defectPhotoMissing(it, v)) errs.push(`「${label}」判不合格，必须拍一张不良部位的照片（不能用引用的照片）`);
+    else if (need && (v.photos || []).length < need) lackPhoto.push(it.code || it.name);
   });
+  if (lackPhoto.length) errs.push(`以下 ${lackPhoto.length} 个检验项还没拍照：${lackPhoto.join('、')}（可用「选本单已拍」引用同一张照片）`);
   if (f.type === 'IPQC' && f.items.some(it => itemResult(it, f.values[it.id]) === 'NG') && !f.problems.some(p => p.desc)) errs.push('有不良项，请在「存在的问题」里填写问题描述');
   return errs.slice(0, 30);
 }
@@ -513,7 +567,10 @@ function buildDemo(templates) {
         const p = pick(MASTER.products);
         Object.assign(h, { product: p.code, spec: p.spec, order: `SO-26${pad(Math.floor(rnd() * 30) + 101, 3)}`, orderQty: pick([2400, 4800, 6000]), workshop: pick(MASTER.workshops), temp: 27 + Math.floor(rnd() * 6), humidity: 60 + Math.floor(rnd() * 20) });
         const n = back === 0 ? 2 : 6;
-        for (let i = 0; i < n; i++) f.rounds.push({ time: `${pad(8 + i * 2)}:00`, by: f.inspector, qty: 10 });
+        for (let i = 0; i < n; i++) {
+          const time = `${pad(8 + i * 2)}:00`;
+          f.rounds.push({ time, by: f.inspector, qty: 10, photos: [{ id: uid(), ph: `第${i + 1}轮巡检 ${time}`, hue: 40, time: `${ymd(day)} ${time}`, by: f.inspector }] });
+        }
         bad = rnd() < 0.18;
       } else {
         const p = pick(MASTER.products);
@@ -550,17 +607,30 @@ function buildDemo(templates) {
   return { forms: forms.reverse(), ncrs: ncrs.reverse(), logs: logs.reverse() };
 }
 function fillDemoValues(f, bad) {
-  const photo = (it, hue) => ({ id: uid(), src: placeholderPhoto(itemLabel(it), hue), time: nowStr(new Date(f.date)), by: f.inspector, sample: 1 });
+  const t = `${f.date} ${pad(9 + Math.floor(rnd() * 7))}:${pad(Math.floor(rnd() * 60))}`;
+  const ph = (label, hue) => ({ id: uid(), ph: label, hue, time: t, by: f.inspector });
+  const photo = (it, hue) => hue === 210 ? ph(itemLabel(it), hue) : { ...ph('不良 · ' + itemLabel(it), hue), defect: true };
+  // 基础信息照片
+  (f.basePhotoDefs || []).forEach(d => { f.basePhotos[d.key] = Array.from({ length: d.min }, (_, i) => ph(d.name + (d.min > 1 ? ` ${i + 1}` : ''), 160)); });
   f.items.forEach(it => {
     const v = f.values[it.id];
     if (it.type === 'judge') v.judge = 'OK';
     if (it.type === 'table') v.rows = Array.from({ length: it.samples }, () => it.dims.map(d => +(d.std * (1 + (rnd() - 0.5) * d.pct / 100)).toFixed(d.std >= 100 ? 1 : 2)));
     if (isPatrol(it)) v.cells = f.rounds.map(() => it.type === 'check' ? { v: 'OK', ng: false } : { v: +((DEMO_READING[it.code] || 10) * (1 + (rnd() - 0.5) * 0.04)).toFixed(1), ng: false });
-    if (it.mustPhoto) v.photos = [photo(it, 210)];
   });
   // 单芯产品 D2 选 NA，双芯产品 D1 选 NA
   const p = MASTER.products.find(x => x.code === f.header.product);
   if (f.type === 'FQC' && p) { const na = p.wick > 1 ? 'fD1' : 'fD2'; if (f.values[na]) f.values[na].judge = 'NA'; }
+  // 每项照片（合格也拍）；同一组的外箱/包装类项目共用一张照片，演示「选本单已拍」
+  const rule = photoRule(f); const shared = {};
+  f.items.forEach(it => {
+    const v = f.values[it.id];
+    if (photoNeed(it, v, rule) && !v.photos.length) {
+      const share = ['A', 'B'].includes((it.code || '')[0]) && f.type === 'FQC';
+      if (share) { shared[it.group] = shared[it.group] || ph(it.group, 210); v.photos = [{ ...shared[it.group], id: uid() }]; }
+      else v.photos = [photo(it, 210)];
+    }
+  });
   if (f.type === 'IPQC') {
     if (bad) {
       const pr = pick(DEMO_PROBLEMS); const it = f.items.find(i => i.code === pr.code) || f.items.find(i => i.type === 'check');
@@ -591,7 +661,7 @@ function fillDemoValues(f, bad) {
 }
 
 /* ---------- 全局 store（本地持久化） ---------- */
-const STORE_KEY = 'qc-proto-v2';
+const STORE_KEY = 'qc-proto-v3';
 function freshState() {
   _seed = 20261123;
   const templates = clone(DEFAULT_TEMPLATES);
