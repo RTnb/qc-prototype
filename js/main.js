@@ -5,6 +5,7 @@ const ALL = Object.keys(ROLES);
 const DOERS = ['inspector', 'supervisor', 'manager'];
 const MENU = [
   { path: '/home', label: '工作台', icon: 'HomeFilled', roles: ALL },
+  { path: '/anomaly', label: '异常处理', icon: 'BellFilled', roles: ALL, badge: () => Object.values(store.anomalyStatus || {}).filter(s => s.status !== '已关闭').length },
   { group: '检验作业' },
   { path: '/inspect/IQC', label: 'IQC 进料检验', icon: 'Box', roles: DOERS },
   { path: '/inspect/IPQC', label: 'IPQC 在线巡检', icon: 'SetUp', roles: DOERS },
@@ -22,7 +23,7 @@ const MENU = [
 ];
 const ROUTES = [
   ['/home', 'Home'], ['/inspect/:type', 'InspectList'], ['/form/:no', 'Form'], ['/review', 'Review'],
-  ['/ncr', 'Ncr'], ['/ledger', 'Ledger'], ['/report/:no', 'Report'], ['/trace', 'Trace'],
+  ['/ncr', 'Ncr'], ['/anomaly', 'Anomaly'], ['/ledger', 'Ledger'], ['/report/:no', 'Report'], ['/trace', 'Trace'],
   ['/analytics', 'Analytics'], ['/templates', 'Templates'], ['/templates/:id', 'Designer'],
   ['/master', 'Master'], ['/system', 'System'],
 ];

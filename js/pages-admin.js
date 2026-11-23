@@ -439,6 +439,7 @@ Pages.System = {
           <el-form-item label="照片压缩目标"><el-input-number v-model="store.settings.photoMaxKB" :step="100" :min="200" /> <span class="muted" style="margin-left:6px">KB/张</span></el-form-item>
           <el-form-item label="允许从相册选取"><el-switch v-model="store.settings.allowAlbum" /><span class="muted small" style="margin-left:8px">关闭后只能现场拍照</span></el-form-item>
           <el-form-item label="检验记录保存期限"><el-input-number v-model="store.settings.keepYears" :min="1" :max="15" /> <span class="muted" style="margin-left:6px">年</span></el-form-item>
+          <el-form-item label="异常处理时限（小时）"><span class="lim">CR <el-input-number v-model="store.settings.anomalyHours.CR" :min="0.5" :step="0.5" size="small" /></span><span class="lim">MAJ <el-input-number v-model="store.settings.anomalyHours.MAJ" :min="0.5" :step="0.5" size="small" /></span><span class="lim">MIN <el-input-number v-model="store.settings.anomalyHours.MIN" :min="0.5" :step="0.5" size="small" /></span></el-form-item>
           <el-form-item label="显示越南文"><el-switch v-model="store.showVi" /></el-form-item>
         </el-form>
       </el-tab-pane>

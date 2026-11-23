@@ -68,7 +68,7 @@ async function processPhoto(file, mark, maxSide = 1280) {
 }
 
 Widgets.PhotoCell = {
-  props: { photos: Array, itemName: String, formNo: String, inspector: String, readonly: Boolean, min: Number, preview: Boolean, compact: Boolean, pool: Array, defectMode: Boolean },
+  props: { photos: Array, itemName: String, formNo: String, inspector: String, readonly: Boolean, min: Number, preview: Boolean, compact: Boolean, pool: Array, defectMode: Boolean, hint: String },
   data() { return { busy: false, picking: false, chosen: [] }; },
   computed: {
     srcList() { return this.photos.map(srcOf); },
@@ -116,7 +116,7 @@ Widgets.PhotoCell = {
     </div>
     <button v-if="!readonly" class="thumb add" :class="{need: (min && photos.length < min) || needDefect, bad: defectMode}" @click="pick" v-loading="busy">
       <el-icon :size="compact?18:22"><Camera /></el-icon>
-      <span>{{ defectMode ? '拍不良部位' : (min && photos.length < min ? '需 '+min+' 张' : '拍照') }}</span>
+      <span>{{ defectMode ? '拍不良部位' : (hint && !photos.length ? hint : (min && photos.length < min ? '需 '+min+' 张' : '拍照')) }}</span>
     </button>
     <button v-if="!readonly && poolLeft.length" class="thumb add pool" @click="openPool">
       <el-icon :size="compact?16:20"><PictureFilled /></el-icon>
@@ -190,6 +190,11 @@ Widgets.ItemField = {
       if (this.val.judge !== 'NG') { this.val.qty = null; this.val.defect = ''; }
     },
     cellNG(j, x) { return dimNG(this.item.dims[j], x); },
+    filled,
+    setStd(d, raw) {
+      const v = Number(raw); if (!raw || isNaN(v)) return;
+      d.std = v; if (filled(d.pct)) { d.lo = +(v * (1 - d.pct / 100)).toFixed(3); d.hi = +(v * (1 + d.pct / 100)).toFixed(3); }
+    },
   },
   template: `
   <div class="item-card" :class="{ng: res==='NG'}">
@@ -218,7 +223,11 @@ Widgets.ItemField = {
 
     <div v-else-if="item.type==='table'" class="item-body table-wrap">
       <table class="sample-table">
-        <thead><tr><th>样本</th><th v-for="d in item.dims" :key="d.name">{{ d.name }}<small>{{ d.std }}<template v-if="d.pct"> ±{{ d.pct }}%</template></small><small>{{ d.lo }} ~ {{ d.hi }}</small></th></tr></thead>
+        <thead><tr><th>样本</th><th v-for="d in item.dims" :key="d.name">{{ d.name }}
+          <template v-if="filled(d.std)"><small>{{ d.std }}<template v-if="d.pct"> ±{{ d.pct }}%</template></small><small>{{ d.lo }} ~ {{ d.hi }}</small></template>
+          <template v-else-if="!readonly"><small class="red">标准值未带出，请按规格书填</small><input class="std-input" type="number" step="any" placeholder="标准值" @change="setStd(d, $event.target.value)" /></template>
+          <small v-else>无标准值</small>
+        </th></tr></thead>
         <tbody>
           <tr v-for="(row,i) in val.rows" :key="i">
             <td class="sn">{{ i+1 }}</td>
@@ -257,7 +266,7 @@ Widgets.ItemField = {
     </div>
 
     <div v-if="needPhoto || item.type==='photo' || (val.photos && val.photos.length)" class="item-photos">
-      <PhotoCell :photos="val.photos" :item-name="(item.code?item.code+' ':'')+item.name" :form-no="formNo" :inspector="inspector" :readonly="readonly" :min="needPhoto" :preview="preview" :pool="pool" :defect-mode="res==='NG'" />
+      <PhotoCell :photos="val.photos" :item-name="(item.code?item.code+' ':'')+item.name" :form-no="formNo" :inspector="inspector" :readonly="readonly" :min="needPhoto" :preview="preview" :pool="pool" :defect-mode="res==='NG'" :hint="['table','measure'].includes(item.type) ? '拍测量读数' : ''" />
     </div>
   </div>`,
 };
@@ -304,11 +313,13 @@ Widgets.PatrolSheet = {
       }).catch(() => { });
     },
     cell(it, k = this.cur) { return this.f.values[it.id].cells[k]; },
-    setCheck(it, v) { if (!this.editable) return; const c = this.cell(it); c.v = c.v === v ? '' : v; },
     toggleNg(it) { if (!this.editable) return; const c = this.cell(it); c.ng = !c.ng; },
     allOk() { this.f.items.forEach(it => { if (it.type === 'check') { const c = this.cell(it); if (!c.v) c.v = 'OK'; } }); },
     isNG(it, k) { return cellNG(it, this.cell(it, k)); },
     itemNG(it) { return itemResult(it, this.f.values[it.id]) === 'NG'; },
+    filled,
+    onReading() { /* 超限由检验单页统一上报，见 Pages.Form 的 anomalyKeys 监听 */ },
+    setCheck(it, v) { if (!this.editable) return; const c = this.cell(it); c.v = c.v === v ? '' : v; },
     isDefectPhoto,
     show(it, k) { const c = this.cell(it, k); if (!cellFilled(it, c)) return ''; return it.type === 'check' ? (c.v === 'OK' ? '✓' : '✗') : c.v; },
   },
@@ -344,14 +355,14 @@ Widgets.PatrolSheet = {
         <div v-for="it in g.items" :key="it.id" class="p-row" :class="{ng: isNG(it)}">
           <span class="p-code">{{ it.code }}</span>
           <LevelBadge :level="it.level" />
-          <span class="p-name"><Bi :zh="it.name" :vi="it.vi" /></span>
+          <span class="p-name"><Bi :zh="it.name" :vi="it.vi" /><small v-if="it.type==='reading' && filled(it.lo)" class="p-limit">标准 {{ it.std }}（{{ it.lo }} ~ {{ it.hi }}）{{ it.unit }}</small></span>
           <span class="p-ctrl">
             <template v-if="it.type==='check'">
               <button class="pbtn ok" :class="{on: cell(it).v==='OK'}" @click="setCheck(it,'OK')">✓</button>
               <button class="pbtn ng" :class="{on: cell(it).v==='NG'}" @click="setCheck(it,'NG')">✗</button>
             </template>
             <template v-else>
-              <el-input-number v-model="cell(it).v" :disabled="!editable" :controls="false" size="default" class="p-num" :placeholder="it.unit" />
+              <el-input-number v-model="cell(it).v" :disabled="!editable" :controls="false" size="default" class="p-num" :class="{ng: isNG(it)}" :placeholder="it.unit" @change="onReading(it)" />
               <span class="unit">{{ it.unit }}</span>
               <button class="pbtn ng sm" :class="{on: cell(it).ng}" @click="toggleNg(it)" title="标记异常">✗</button>
             </template>

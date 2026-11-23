@@ -59,6 +59,7 @@ Pages.Home = {
       ];
     },
     recent() { return store.forms.filter(f => f.status !== 'draft').slice(0, 6); },
+    openAnomalies() { const now = Date.now(); return anomalyRows().filter(r => r.st.status !== '已关闭').sort((a, b) => a.st.deadline - b.st.deadline).map(r => ({ ...r, t: anomalyTime(r.st, now) })); },
   },
   methods: { open(f) { go('/form/' + f.no); } },
   template: `
@@ -75,6 +76,14 @@ Pages.Home = {
         <el-icon class="qc-plus"><Plus /></el-icon>
       </button>
     </div>
+    <el-card v-if="openAnomalies.length" shadow="never" class="panel an-home">
+      <template #header><div class="panel-h"><span><el-icon color="#d64545"><BellFilled /></el-icon> 待处理异常 {{ openAnomalies.length }} 条<template v-if="openAnomalies.some(a=>a.t.cls==='over')">，<b class="red">{{ openAnomalies.filter(a=>a.t.cls==='over').length }} 条已超时</b></template></span><el-link type="primary" @click="go('/anomaly')">全部异常</el-link></div></template>
+      <div v-for="a in openAnomalies.slice(0,5)" :key="a.key" class="list-row an-row" @click="go('/anomaly')">
+        <TypeTag :type="a.type" /><LevelBadge :level="a.level" /><span class="ellipsis"><b>{{ a.item }}</b> <span class="muted">{{ a.detail }}</span></span>
+        <span class="an-time" :class="a.t.cls">{{ a.st.status }} · {{ a.t.text }}</span>
+      </div>
+    </el-card>
+
     <div class="kpi-row">
       <div v-for="s in stats" :key="s.label" class="kpi"><div class="kpi-label">{{ s.label }}</div><div class="kpi-value">{{ s.value }}<small>{{ s.unit }}</small></div></div>
     </div>
@@ -162,7 +171,30 @@ Pages.Form = {
   setup() { return { store, TYPES, MASTER, ROLES, LEVELS, LEVEL_KEYS, RESULTS, SAMPLING_METHODS, go, supplierName, materialName, customerName }; },
   data() { return { f: null, isNew: false, reviewComment: '', reviewResult: '', errs: [], showErrs: false }; },
   created() { this.load(); },
+  watch: {
+    /* 发现异常立即上报：自动保存单据、登记异常、通知 QC 主管，不等提交 */
+    anomalyKeys(nv) {
+      if (!this.f || !this.editable) return;
+      if (!nv) { if (!this.isNew) syncAnomalies(this.f); return; }
+      if (this.isNew) { this.persist(); computeSummary(this.f); }
+      const added = syncAnomalies(this.f, this.me.user);
+      if (!added.length) return;
+      const h = Math.min(...added.map(a => anomalyHours(a.level)));
+      addLog('上报异常', this.f.no, added.map(a => a.item).join('、'));
+      ElementPlus.ElNotification({
+        type: 'error', duration: 8000, title: `发现异常，已立即通知 QC 主管 李娜`,
+        message: added.slice(0, 3).map(a => `${a.item}：${a.detail}`).join('；') + `。须在 ${h} 小时内处理，超时自动升级给质量经理。单据已自动保存。`,
+      });
+    },
+  },
   computed: {
+    anomalyKeys() { return this.f ? anomaliesOf(this.f).map(a => a.key).join(',') : ''; },
+    openAnomalies() {
+      const now = Date.now();
+      if (!this.f) return [];
+      return Object.entries(store.anomalyStatus).filter(([k, st]) => k.startsWith(this.f.no + '|') && st.status !== '已关闭')
+        .map(([k, st]) => ({ k, ...st, overdue: now > st.deadline }));
+    },
     t() { return TYPES[this.f.type]; },
     me() { return ROLES[store.role]; },
     editable() { return ['draft', 'returned'].includes(this.f.status) && !['viewer', 'admin'].includes(store.role); },
@@ -221,6 +253,7 @@ Pages.Form = {
       const p = MASTER.products.find(x => x.code === this.f.header.product);
       if (!p) return;
       this.f.header.spec = p.spec;
+      resolveSpec(this.f);
       if (this.f.type === 'FQC') {
         this.f.header.customer = p.customer;
         const na = p.wick > 1 ? 'fD1' : 'fD2', other = p.wick > 1 ? 'fD2' : 'fD1';
@@ -282,6 +315,10 @@ Pages.Form = {
       </div>
     </div>
     <FlowSteps :status="isNew?'draft':f.status" :result="f.result" class="hide-m" />
+    <el-alert v-if="openAnomalies.length" type="error" :closable="false" show-icon class="mb anomaly-banner">
+      <template #title>本单有 {{ openAnomalies.length }} 条异常未关闭<template v-if="openAnomalies.some(a=>a.overdue)">，其中 {{ openAnomalies.filter(a=>a.overdue).length }} 条已超时</template>
+        <el-link type="danger" style="margin-left:8px" @click="store.anomalyFocus=f.no; go('/anomaly')">查看处理进度 →</el-link></template>
+    </el-alert>
     <el-alert v-if="f.status==='returned' && f.reviewComment" type="error" :closable="false" show-icon class="mb">
       <template #title>审核退回（{{ f.reviewer }}）：{{ f.reviewComment }}</template>
     </el-alert>
@@ -413,7 +450,7 @@ Pages.Form = {
               </tr></tbody>
             </table>
             <template v-if="f.plan.fixed">
-              <div class="side-lbl">规格 / 性能（{{ f.plan.fixed.n }}PCS）</div>
+              <div class="side-lbl">实测项目（固定抽 {{ f.plan.fixed.n }}PCS：尺寸、重量等）</div>
               <table class="lv-table">
                 <thead><tr><th></th><th>允收</th><th>缺陷</th></tr></thead>
                 <tbody><tr v-for="L in LEVEL_KEYS" :key="L" :class="{rej: summary.levelCount.fixed[L] > f.plan.fixed.ac[L]}">

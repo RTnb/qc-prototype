@@ -133,14 +133,14 @@ const MASTER = {
   materials: [
     { code: 'M-GL-01', name: '玻璃杯（透明）', vi: 'Ly thủy tinh (trong suốt)', spec: 'GL-8OZ 直身杯 Φ78×85', unit: 'PCS', supplier: 'S001', dims: { height: 85, mouth: 78, wall: 3.0, weight: 230 } },
     { code: 'M-GL-02', name: '玻璃杯（磨砂）', vi: 'Ly thủy tinh (mờ)', spec: 'GL-12OZ 直身杯 Φ90×100', unit: 'PCS', supplier: 'S002', dims: { height: 100, mouth: 90, wall: 3.5, weight: 320 } },
-    { code: 'M-WX-01', name: '大豆蜡', vi: 'Sáp đậu nành', spec: '464 片状 20kg/箱', unit: 'KG', supplier: 'S003', dims: {} },
-    { code: 'M-WK-01', name: '棉芯灯芯', vi: 'Tim đèn cotton', spec: 'CD-10 带底座 150mm', unit: 'PCS', supplier: 'S004', dims: {} },
-    { code: 'M-PK-01', name: '彩盒', vi: 'Hộp màu', spec: '8oz 四色印刷', unit: 'PCS', supplier: 'S005', dims: {} },
-    { code: 'M-PK-02', name: '外箱', vi: 'Thùng carton', spec: '五层瓦楞 12 入', unit: 'PCS', supplier: 'S005', dims: {} },
+    { code: 'M-WX-01', name: '大豆蜡', vi: 'Sáp đậu nành', spec: '464 片状 20kg/箱', unit: 'KG', supplier: 'S003', dims: { size: 5, weight: 20000 } },
+    { code: 'M-WK-01', name: '棉芯灯芯', vi: 'Tim đèn cotton', spec: 'CD-10 带底座 150mm', unit: 'PCS', supplier: 'S004', dims: { size: 150, weight: 0.8 } },
+    { code: 'M-PK-01', name: '彩盒', vi: 'Hộp màu', spec: '8oz 四色印刷', unit: 'PCS', supplier: 'S005', dims: { size: 120, weight: 45 } },
+    { code: 'M-PK-02', name: '外箱', vi: 'Thùng carton', spec: '五层瓦楞 12 入', unit: 'PCS', supplier: 'S005', dims: { size: 400, weight: 650 } },
   ],
   products: [
-    { code: 'P-01', name: '香薰杯蜡 8oz（透明杯·薰衣草）', spec: 'SC-8-LV 单芯 净重 200g', customer: 'C01', wick: 1 },
-    { code: 'P-02', name: '香薰杯蜡 12oz（磨砂杯·香草）', spec: 'SC-12-VN 双芯 净重 320g', customer: 'C02', wick: 2 },
+    { code: 'P-01', name: '香薰杯蜡 8oz（透明杯·薰衣草）', spec: 'SC-8-LV 单芯 净重 200g', customer: 'C01', wick: 1, dims: { height: 85, mouth: 78, liquid: 70, net: 200 } },
+    { code: 'P-02', name: '香薰杯蜡 12oz（磨砂杯·香草）', spec: 'SC-12-VN 双芯 净重 320g', customer: 'C02', wick: 2, dims: { height: 100, mouth: 90, liquid: 82, net: 320 } },
   ],
   customers: [
     { code: 'C01', name: '客户 A', portal: true },
@@ -171,7 +171,7 @@ const G = (code, zh, vi) => ({ group: code ? `${code} ${zh}` : zh, groupVi: vi }
 const BP = (key, name, vi, min = 1) => ({ key, name, vi, min });
 const BASE_IQC = () => [BP('pack', '来料外包装及标签', 'Bao bì và nhãn hàng nhập'), BP('doc', '送货单 / 供应商出货报告', 'Phiếu giao hàng / Báo cáo xuất hàng'), BP('sample', '抽检样品全貌', 'Toàn bộ mẫu rút kiểm')];
 const BASE_IPQC = () => [BP('line', '生产线现场', 'Hiện trường chuyền sản xuất'), BP('first', '当班首件产品', 'Sản phẩm đầu tiên của ca')];
-const BASE_FQC = () => [BP('carton', '外箱唛头', 'Tem thùng carton'), BP('box', '产品包装（彩盒）', 'Đóng gói sản phẩm'), BP('product', '产品外观（正面、侧面）', 'Ngoại quan sản phẩm', 2), BP('burn', '燃烧测试', 'Thử nghiệm đốt cháy')];
+const BASE_FQC = () => [BP('carton', '纸箱（外箱唛头）', 'Thùng carton (tem thùng)'), BP('box', '彩盒', 'Hộp màu'), BP('label', '标贴（条码 / 警示标签）', 'Tem nhãn (mã vạch / cảnh báo)'), BP('product', '产品外观（正面、侧面）', 'Ngoại quan sản phẩm', 2), BP('burn', '燃烧测试', 'Thử nghiệm đốt cháy')];
 
 const TPL_IQC_GLASS = {
   id: 'TPL-IQC-001', docNo: 'SL/QR-35', name: '进料检验报告（玻璃杯-透明）', nameVi: 'Báo cáo kiểm tra nguyên liệu đầu vào', type: 'IQC',
@@ -200,7 +200,8 @@ const TPL_IQC_GENERAL = {
   plan: { method: 'MIL-STD-105E II', aql: { CR: 0, MAJ: 2.5, MIN: 2.5 }, fixed: { n: 5, ac: { CR: 0, MAJ: 1, MIN: 1 } } },
   note: '规格和性能检验按照 5PCS 每批次进行抽样，判定标准是：CR: 0 PCS；MAJ ≤ 1 PCS；MIN ≤ 1 PCS', noteVi: '',
   items: [
-    I('规格型号与订单/样品一致', 'judge', { id: 'g1', code: '1.1', ...G('1', '规格（5PCS）', 'Quy cách (5PCS)'), vi: 'Quy cách đúng với đơn hàng / mẫu', level: 'MAJ', sampling: 'fixed' }),
+    I('尺寸符合规格书', 'table', { id: 'g1', code: '1.1', ...G('1', '规格（5PCS）', 'Quy cách (5PCS)'), vi: 'Kích thước đúng quy cách', level: 'MAJ', sampling: 'fixed', samples: 5, dims: [{ name: '尺寸 mm', key: 'size', pct: 3, std: null }], remark: '标准值按规格书带出，公差 ±3%（待确认）' }),
+    I('重量符合规格书', 'table', { id: 'g5', code: '1.2', ...G('1', '规格（5PCS）', 'Quy cách (5PCS)'), vi: 'Trọng lượng đúng quy cách', level: 'MAJ', sampling: 'fixed', samples: 5, dims: [{ name: '重量 g', key: 'weight', pct: 3, std: null }], remark: '标准值按规格书带出，公差 ±3%（待确认）' }),
     I('外观无破损、污渍、异物', 'judge', { id: 'g2', code: '2.1', ...G('2', '外观', 'Ngoại quan'), vi: 'Ngoại quan không hư hỏng, bẩn, dị vật', level: 'MAJ', mustPhoto: true }),
     I('包装标识正确', 'judge', { id: 'g3', code: '2.2', ...G('2', '外观', 'Ngoại quan'), vi: 'Nhãn mác bao bì chính xác', level: 'MIN' }),
     I('性能符合订单要求', 'judge', { id: 'g4', code: '3.1', ...G('3', '性能（5PCS）', 'Tính năng (5PCS)'), vi: 'Tính năng đáp ứng yêu cầu đơn hàng', level: 'MAJ', sampling: 'fixed' }),
@@ -209,7 +210,7 @@ const TPL_IQC_GENERAL = {
 function patrolItems() {
   const B = G('', '蘸灯芯', 'Nhúng tim đèn'), C = G('', '压制蜡柱', 'Sáp trụ ép chế'), D = G('', '灌装', 'Chế sáp');
   const c = (code, lv, name, vi, grp, o = {}) => I(name, 'check', { id: 'p' + code, code, level: lv, vi, ...grp, ...o });
-  const r = (code, lv, name, vi, unit, grp) => I(name, 'reading', { id: 'p' + code, code, level: lv, vi, unit, lo: null, hi: null, ...grp });
+  const r = (code, lv, name, vi, unit, grp, o = {}) => I(name, 'reading', { id: 'p' + code, code, level: lv, vi, unit, lo: null, hi: null, ...grp, ...o });
   return [
     c('B1', 'MAJ', '灯芯型号（多少股）', 'Loại tim đèn (bao nhiêu sợi)', B),
     r('B2', 'MIN', '沾蜡槽温度', 'Nhiệt độ máng sáp nhúng', '℃', B),
@@ -233,13 +234,14 @@ function patrolItems() {
     r('D7', 'MIN', '补蜡时间', 'Thời gian bù sáp', 'min', D),
     r('D8', 'MAJ', '补蜡温度', 'Nhiệt độ bù sáp', '℃', D),
     r('D9', 'MIN', '烤平深度', 'Độ sâu hơ làm bằng', 'mm', D),
-    r('D10', 'MAJ', '最终产品液面高度', 'Độ cao mặt sáp lỏng', 'mm', D),
+    r('D10', 'MAJ', '最终产品液面高度', 'Độ cao mặt sáp lỏng', 'mm', D, { key: 'liquid', pct: 3, remark: '按产品规格 ±3%（待确认）' }),
     c('D11', 'MIN', '剖体', 'Xẻ thân', D),
-    r('D12', 'MIN', '称重', 'Lượng cân', 'g', D),
+    r('D12', 'MAJ', '称重（净重）', 'Lượng cân (trọng lượng tịnh)', 'g', D, { key: 'net', pct: 3, remark: '按产品净重 ±3%（待确认）' }),
     r('D13', 'MIN', '灯芯长度', 'Độ dài tim đèn', 'mm', D),
     c('D14', 'MAJ', '灯芯是否有散头', 'Đầu tim đèn có bị tua không', D),
     c('D15', 'MAJ', '蜡是否有掉蜡块现象', 'Sáp có hiện tượng rớt sáp miếng không', D),
     c('D16', 'MAJ', '蜡身起泡', 'Thân nến nổi bong bóng', D),
+    c('D17', 'MAJ', '产品外观（表面平整、无污渍、无杂质）', 'Ngoại quan sản phẩm (bề mặt phẳng, sạch, không tạp chất)', D, { remark: '纸质表外新增' }),
   ];
 }
 const TPL_IPQC = {
@@ -280,13 +282,13 @@ function fqcItems() {
     j('D1', 'MAJ', '一个灯芯居中', 'Trung tâm 1 tim đèn', D, { remark: '单芯产品适用，多芯选 NA' }),
     j('D2', 'MAJ', '多灯芯均匀分布', 'Phân bố đồng đều nhiều tim đèn', D, { remark: '多芯产品适用，单芯选 NA' }),
     j('E1', 'CR', '灯芯型号符合订单要求', 'Mô hình tim đèn đáp ứng yêu cầu đặt hàng', E),
-    j('F1', 'CR', '（容器）尺寸符合订单要求', 'Kích thước dung môi đáp ứng yêu cầu đặt hàng', E),
+    j('F1', 'CR', '（容器）尺寸符合订单要求', 'Kích thước dung môi đáp ứng yêu cầu đặt hàng', E, { sampling: 'fixed', samples: 5, remark: '实测 5PCS，公差 ±3%（待确认，可在模版中修改）', type: 'table', dims: [{ name: '杯高 mm', key: 'height', pct: 3, std: 85 }, { name: '口径 mm', key: 'mouth', pct: 3, std: 78 }] }),
     j('G1', 'CR', '（容器）效果符合订单要求', 'Hiệu ứng dung môi đáp ứng yêu cầu đặt hàng', E),
     j('G2', 'CR', '（容器）外观无损坏', 'Dung môi không ảnh hưởng về ngoại hình', E),
     j('H1', 'CR', '产品颜色符合订单要求', 'Màu sắc sản phẩm đáp ứng yêu cầu đặt hàng', E),
     j('I1', 'CR', '产品香味符合订单要求', 'Mùi hương sản phẩm đáp ứng yêu cầu đặt hàng', E),
-    j('J1', 'CR', '液面高度符合订单要求', 'Độ cao mặt sáp đáp ứng yêu cầu đặt hàng', E),
-    j('K1', 'CR', '产品重量符合订单要求', 'Trọng lượng sản phẩm đáp ứng yêu cầu đặt hàng', E),
+    j('J1', 'CR', '液面高度符合订单要求', 'Độ cao mặt sáp đáp ứng yêu cầu đặt hàng', E, { sampling: 'fixed', samples: 5, remark: '实测 5PCS，公差 ±3%（待确认，可在模版中修改）', type: 'table', dims: [{ name: '液面高度 mm', key: 'liquid', pct: 3, std: 70 }] }),
+    j('K1', 'CR', '产品重量符合订单要求', 'Trọng lượng sản phẩm đáp ứng yêu cầu đặt hàng', E, { sampling: 'fixed', samples: 5, remark: '实测 5PCS，公差 ±3%（待确认，可在模版中修改）', type: 'table', dims: [{ name: '净重 g', key: 'net', pct: 3, std: 200 }] }),
     j('L1', 'CR', '燃烧测试符合产品标准', 'Thử nghiệm đốt cháy đạt tiêu chuẩn sản phẩm', L),
     j('L2', 'CR', '变色测试符合产品标准', 'Thử nghiệm đổi màu đạt tiêu chuẩn sản phẩm', L),
     j('L3', 'CR', '高温测试符合产品标准', 'Thử nghiệm nhiệt độ cao đạt tiêu chuẩn sản phẩm', L),
@@ -297,9 +299,9 @@ function fqcItems() {
 const TPL_FQC = {
   id: 'TPL-FQC-001', docNo: 'SL/QR-38', name: '成品检验报告', nameVi: 'Báo cáo kiểm nghiệm thành phẩm', type: 'FQC',
   version: 1, status: '已发布', updatedAt: '2026-11-03', bind: { materials: [], processes: [] }, isDefault: true, ngPhoto: true,
-  plan: { method: 'MIL-STD-105E II', aql: { CR: 0, MAJ: 2.5, MIN: 4.0 } },
+  plan: { method: 'MIL-STD-105E II', aql: { CR: 0, MAJ: 2.5, MIN: 4.0 }, fixed: { n: 5, ac: { CR: 0, MAJ: 1, MIN: 1 } } },
   itemPhoto: 'all', basePhotos: BASE_FQC(),
-  note: '纸质表上 MAJ / MIN 的 AQL 为空白，原型暂按 MAJ 2.5、MIN 4.0，可在模版中修改', noteVi: '',
+  note: 'F1 尺寸、J1 液面高度、K1 重量每批实测 5PCS，任一件超差即判不合格（CR）。纸质表上 MAJ / MIN 的 AQL 为空白，原型暂按 MAJ 2.5、MIN 4.0，可在模版中修改', noteVi: '',
   items: fqcItems(),
 };
 const DEFAULT_TEMPLATES = [TPL_IQC_GLASS, TPL_IQC_GENERAL, TPL_IPQC, TPL_FQC];
@@ -372,6 +374,12 @@ function resolveSpec(f) {
       d.lo = +(d.std * (1 - d.pct / 100)).toFixed(3); d.hi = +(d.std * (1 + d.pct / 100)).toFixed(3);
     }
   }));
+  // 巡检读数（液面高度、称重等）也按产品规格带出标准值和上下限
+  f.items.forEach(it => {
+    if (it.type !== 'reading' || !it.key || dims[it.key] === undefined) return;
+    it.std = dims[it.key];
+    if (filled(it.pct)) { it.lo = +(it.std * (1 - it.pct / 100)).toFixed(2); it.hi = +(it.std * (1 + it.pct / 100)).toFixed(2); }
+  });
 }
 /** 抽样方案：按 CR / MAJ / MIN 各自的 AQL 算接收/拒收数 */
 function recalcPlan(f) {
@@ -539,6 +547,8 @@ const DEMO_PROBLEMS = [
   { code: 'D16', desc: 'D16 蜡身起泡 3 PCS', cause: '灌蜡温度偏低', action: '调整灌蜡温度，补蜡烤平' },
   { code: 'C8', desc: 'C8 灯芯偏位 2 PCS', cause: '粘芯治具松动', action: '紧固治具，重新粘芯' },
   { code: 'B3', desc: 'B3 蜡槽有杂质', cause: '未按时过滤', action: '立即过滤蜡槽，增加点检频次' },
+  { code: 'D10', desc: 'D10 液面高度偏低', cause: '灌装计量泵偏差', action: '校准计量泵，偏低产品补蜡' },
+  { code: 'D12', desc: 'D12 称重偏轻', cause: '灌蜡量不足', action: '调整灌装量，偏轻产品补蜡复称' },
 ];
 function buildDemo(templates) {
   const forms = [], ncrs = [], logs = [];
@@ -616,7 +626,7 @@ function fillDemoValues(f, bad) {
     const v = f.values[it.id];
     if (it.type === 'judge') v.judge = 'OK';
     if (it.type === 'table') v.rows = Array.from({ length: it.samples }, () => it.dims.map(d => +(d.std * (1 + (rnd() - 0.5) * d.pct / 100)).toFixed(d.std >= 100 ? 1 : 2)));
-    if (isPatrol(it)) v.cells = f.rounds.map(() => it.type === 'check' ? { v: 'OK', ng: false } : { v: +((DEMO_READING[it.code] || 10) * (1 + (rnd() - 0.5) * 0.04)).toFixed(1), ng: false });
+    if (isPatrol(it)) v.cells = f.rounds.map(() => it.type === 'check' ? { v: 'OK', ng: false } : { v: +(((filled(it.std) ? it.std : DEMO_READING[it.code]) || 10) * (1 + (rnd() - 0.5) * 0.04)).toFixed(1), ng: false });
   });
   // 单芯产品 D2 选 NA，双芯产品 D1 选 NA
   const p = MASTER.products.find(x => x.code === f.header.product);
@@ -635,7 +645,7 @@ function fillDemoValues(f, bad) {
     if (bad) {
       const pr = pick(DEMO_PROBLEMS); const it = f.items.find(i => i.code === pr.code) || f.items.find(i => i.type === 'check');
       const v = f.values[it.id]; const k = Math.floor(rnd() * f.rounds.length);
-      if (it.type === 'check') v.cells[k].v = 'NG'; else v.cells[k].ng = true;
+      if (it.type === 'check') v.cells[k].v = 'NG'; else if (filled(it.lo)) v.cells[k].v = +(it.lo * 0.97).toFixed(1); else v.cells[k].ng = true;
       v.photos = [photo(it, 0)];
       f.problems.push({ time: f.rounds[k].time, desc: pr.desc, cause: pr.cause, action: pr.action });
     }
@@ -660,12 +670,79 @@ function fillDemoValues(f, bad) {
   }
 }
 
+
+/* ---------- 异常：发现即上报、限时处理 ---------- */
+const ANOMALY_ACTIONS = {
+  IQC: ['隔离待处理', '通知供应商', '退货', '挑选使用', '特采'],
+  IPQC: ['停线整改', '调整工艺参数', '隔离返工', '加严巡检后继续生产'],
+  FQC: ['隔离待判', '返工', '挑选', '特采放行'],
+};
+/** 从单据里找出所有异常：判 NG、实测超差、巡检 ✗ 或读数超限。每条有固定 key，用来跟踪处理状态 */
+function anomaliesOf(f) {
+  const out = [];
+  const photoOf = v => (v.photos || []).find(isDefectPhoto) || (v.photos || [])[0] || null;
+  f.items.forEach(it => {
+    const v = f.values[it.id]; if (!v) return;
+    const base = { no: f.no, type: f.type, itemId: it.id, code: it.code, item: itemLabel(it), level: it.level || 'MAJ', photo: photoOf(v) };
+    if (it.type === 'judge' && v.judge === 'NG') out.push({ ...base, key: `${f.no}|${it.id}|j`, detail: `NG ×${Math.max(1, Number(v.qty) || 1)}${v.note ? '：' + v.note : ''}`, std: it.remark || '—' });
+    if (it.type === 'measure' && measureState(it, v.value) === 'NG') out.push({ ...base, key: `${f.no}|${it.id}|m`, detail: `实测 ${v.value} ${it.unit}`, std: `${it.std}（${it.lo}~${it.hi}）` });
+    if (it.type === 'table') (v.rows || []).forEach((row, i) => row.forEach((x, j) => {
+      const d = it.dims[j];
+      if (dimNG(d, x)) out.push({ ...base, key: `${f.no}|${it.id}|s${i}d${j}`, detail: `样本 ${i + 1} ${d.name} 实测 ${x}`, std: `${d.std}（${d.lo}~${d.hi}）` });
+    }));
+    if (isPatrol(it)) (v.cells || []).forEach((c, k) => {
+      if (!cellNG(it, c) || !f.rounds[k]) return;
+      out.push({ ...base, key: `${f.no}|${it.id}|r${k}`, round: f.rounds[k].time,
+        detail: it.type === 'check' ? `第 ${k + 1} 轮 ${f.rounds[k].time} 判 ✗` : `第 ${k + 1} 轮 ${f.rounds[k].time} 读数 ${c.v} ${it.unit}`,
+        std: filled(it.lo) ? `${it.std}（${it.lo}~${it.hi}）${it.unit}` : '—' });
+    });
+  });
+  return out;
+}
+function anomalyHours(level) { return (store.settings.anomalyHours || {})[level] || 2; }
+/** 单据上出现新异常时立即登记（已登记的保持不动）；还没人处理就被改回合格的，撤销登记 */
+function syncAnomalies(f, who) {
+  const list = anomaliesOf(f), keys = new Set(list.map(a => a.key)), added = [];
+  list.forEach(a => {
+    if (store.anomalyStatus[a.key]) return;
+    const now = Date.now();
+    store.anomalyStatus[a.key] = { status: '待处理', reportedAt: now, deadline: now + anomalyHours(a.level) * 3600e3, reporter: who || f.inspector, handler: '', disposition: '', action: '', closedAt: null };
+    added.push(a);
+  });
+  Object.keys(store.anomalyStatus).forEach(k => {
+    if (k.startsWith(f.no + '|') && !keys.has(k) && store.anomalyStatus[k].status === '待处理') delete store.anomalyStatus[k];
+  });
+  return added;
+}
+function anomalyState(st, now = Date.now()) {
+  if (!st) return { label: '待处理', overdue: false };
+  if (st.status === '已关闭') return { label: '已关闭', overdue: st.closedAt > st.deadline };
+  return { label: st.status, overdue: now > st.deadline };
+}
+/** 演示数据：历史异常已处理关闭，最近两天的部分还在处理 */
+function demoAnomalyStatus(forms) {
+  const map = {}; const today = ymd(new Date());
+  const yest = ymd(new Date(Date.now() - 864e5));
+  forms.forEach(f => anomaliesOf(f).forEach((a, i) => {
+    const base = new Date(f.date + 'T' + (a.round || '10:00') + ':00').getTime() + i * 60e3;
+    const hours = { CR: 1, MAJ: 2, MIN: 4 }[a.level] || 2;
+    const st = { status: '已关闭', reportedAt: base, deadline: base + hours * 3600e3, reporter: f.inspector, handler: '李娜', disposition: pick(ANOMALY_ACTIONS[f.type]), action: '', closedAt: base + (20 + Math.floor(rnd() * 90)) * 60e3 };
+    const pr = DEMO_PROBLEMS.find(p => p.code === a.code);
+    st.action = pr ? `${pr.cause}；${pr.action}` : (f.type === 'IQC' ? '已隔离该批，通知供应商提交改善报告' : '已隔离不良品并返工，复检合格');
+    if (f.date === today) Object.assign(st, { status: '待处理', handler: '', disposition: '', action: '', closedAt: null, reportedAt: Date.now() - 25 * 60e3, deadline: Date.now() - 25 * 60e3 + hours * 3600e3 });
+    else if (f.date === yest) Object.assign(st, i % 2 ? { status: '待处理', handler: '', disposition: '', action: '', closedAt: null } : { status: '处理中', action: '', closedAt: null });
+    map[a.key] = st;
+  }));
+  return map;
+}
+
 /* ---------- 全局 store（本地持久化） ---------- */
-const STORE_KEY = 'qc-proto-v3';
+const STORE_KEY = 'qc-proto-v6';
 function freshState() {
   _seed = 20261123;
   const templates = clone(DEFAULT_TEMPLATES);
-  return { templates, ...buildDemo(templates) };
+  const demo = buildDemo(templates);
+  return { templates, ...demo, anomalyStatus: demoAnomalyStatus(demo.forms) };
 }
 function loadState() {
   try { const raw = localStorage.getItem(STORE_KEY); if (raw) return JSON.parse(raw); } catch (e) { /* 读不到就用演示数据 */ }
@@ -676,12 +753,12 @@ const store = reactive({
   factory: '示例工厂（越南）',
   lang: 'zh',
   showVi: (() => { try { return localStorage.getItem('qc-proto-vi') !== '0'; } catch (e) { return true; } })(),
-  settings: { warnRate: 90, warnConsecutive: 2, photoMaxKB: 800, keepYears: 3, allowAlbum: true },
+  settings: { warnRate: 90, warnConsecutive: 2, photoMaxKB: 800, keepYears: 3, allowAlbum: true, anomalyHours: { CR: 1, MAJ: 2, MIN: 4 } },
   ...loadState(),
 });
 let _saveWarned = false;
-watch(() => [store.forms, store.templates, store.ncrs, store.logs], () => {
-  try { localStorage.setItem(STORE_KEY, JSON.stringify({ forms: store.forms, templates: store.templates, ncrs: store.ncrs, logs: store.logs })); }
+watch(() => [store.forms, store.templates, store.ncrs, store.logs, store.anomalyStatus], () => {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify({ forms: store.forms, templates: store.templates, ncrs: store.ncrs, logs: store.logs, anomalyStatus: store.anomalyStatus })); }
   catch (e) { if (!_saveWarned) { _saveWarned = true; console.warn('本地存储已满，新拍照片仅本次会话保留'); } }
 }, { deep: true });
 watch(() => store.role, r => { try { localStorage.setItem('qc-proto-role', r); } catch (e) { } });
