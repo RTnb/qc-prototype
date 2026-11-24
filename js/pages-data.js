@@ -83,8 +83,14 @@ Pages.Report = {
       if (f.type === 'IQC') return [[['供应商', 'Nhà cung ứng', supplierName(h.supplier)], ['物料名称', 'Tên nguyên vật liệu', materialName(h.material)], ['规格型号', 'Mã quy cách', h.spec]],
         [['来料数量', 'Số lượng nhập', h.qty], ['接收日期', 'Ngày tiếp nhận', h.receiveDate], ['检验日期', 'Ngày kiểm tra', f.date]],
         [['订单号', 'Số PO', h.order], ['批号', 'Số lô', h.lot], ['报告编号', 'Số báo cáo', f.no]]];
-      if (f.type === 'FQC') return [[['客户名称', 'Khách hàng', customerName(h.customer)], ['产品名称', 'Sản phẩm', materialName(h.product)], ['规格型号', 'Mã quy cách', h.spec]],
-        [['生产数量', 'Số lượng sản xuất', h.qty], ['检验日期', 'Ngày kiểm tra', f.date], ['订单号', 'Mã đơn hàng', h.order]]];
+      if (f.type === 'FQC') {
+        const prod = MASTER.products.find(x => x.code === h.product) || {};
+        return [[['订单号', 'Số đơn hàng', h.order], ['货号', 'Mã hàng', prod.itemNo ? `${prod.itemNo} ${prod.name}` : '']],
+          [['尺寸', 'Kích thước', h.size], ['订单数量', 'Số lượng đơn hàng', h.orderQty]],
+          [['验货数量', 'Số lượng kiểm hàng', h.qty], ['检验日期', 'Ngày kiểm tra', f.date]],
+          [['验货员', 'Nhân viên kiểm hàng', f.inspector], ['验货结论', 'Kết luận kiểm hàng', f.result ? RESULTS[f.result].zh : '']],
+          [['验货状态', 'Trạng thái kiểm hàng', h.visit === '复验' ? '□ 首次　☑ 复验' : '☑ 首次　□ 复验'], ['报告编号', 'Số báo cáo', f.no]]];
+      }
       return [[['产品名称', 'Tên sản phẩm', materialName(h.product)], ['订单号/货号', 'Số đơn đặt/số hàng', h.order], ['订单数量', 'Số lượng đơn đặt', h.orderQty]],
         [['生产车间', 'Xưởng sản xuất', h.workshop], ['日期', 'Ngày tháng', f.date], ['页次', 'Trang', h.page]],
         [['室内温度', 'Nhiệt độ trong phòng', filled(h.temp) ? h.temp + ' ℃' : ''], ['室内潮湿度', 'Độ ẩm trong phòng', filled(h.humidity) ? h.humidity + ' %' : ''], ['InlineQC / 审核', 'Xét duyệt', `${f.inspector} / ${f.reviewer || '—'}`]]];
@@ -92,14 +98,17 @@ Pages.Report = {
     rows() {
       const out = []; let g = null;
       this.f.items.filter(i => !isPatrol(i) && !['sign', 'photo', 'text'].includes(i.type)).forEach(it => {
-        if (it.group && it.group !== g) { g = it.group; out.push({ head: true, name: it.group, vi: it.groupVi }); }
         const v = this.f.values[it.id], res = itemResult(it, v);
+        if (it.other && !v.judge) return;
+        if (it.group && it.group !== g) { g = it.group; out.push({ head: true, name: it.group, vi: it.groupVi }); }
         let result = res || '—';
         if (it.type === 'table') result = tableStats(it, v.rows).map((s, j) => `${it.dims[j].name} ${s.min}~${s.max}`).join('；') + (res ? `（${res}）` : '');
         if (it.type === 'measure') result = `${v.value ?? '—'} ${it.unit}（${res}）`;
         if (v.note) result += `：${v.note}`;
         if (v.defect) result += `［${defectName(v.defect)}］`;
-        out.push({ code: it.code, level: it.level, name: it.name, vi: it.vi, remark: it.remark, result, res, qty: res === 'NG' ? itemQty(it, v) : 0, fixed: it.sampling === 'fixed', photos: v.photos || [] });
+        out.push({ code: it.code, level: v.level || it.level, lvText: it.levels ? it.levels.join('/') : it.level,
+          name: it.other ? `其他${v.otherName ? '：' + v.otherName : ''}` : it.name, vi: it.vi, std: it.other ? '' : it.remark, stdVi: it.other ? '' : it.remarkVi,
+          result, res, qty: res === 'NG' ? itemQty(it, v) : 0, fixed: it.sampling === 'fixed', photos: v.photos || [] });
       });
       return out;
     },
@@ -112,7 +121,7 @@ Pages.Report = {
     slots() { return Array.from({ length: Math.max(6, this.f.rounds.length) }, (_, k) => this.f.rounds[k] || null); },
     baseGroups() { return (this.f.basePhotoDefs || []).map(d => ({ name: d.name, vi: d.vi, photos: this.f.basePhotos[d.key] || [] })); },
     roundGroups() { return (this.f.rounds || []).map((r, k) => ({ name: `第 ${k + 1} 轮 ${r.time}`, photos: r.photos || [] })).filter(g => g.photos.length); },
-    patrolPhotoGroups() { return this.f.items.filter(isPatrol).map(i => ({ name: itemLabel(i), photos: this.f.values[i.id].photos || [] })).filter(g => g.photos.length); },
+    defectPhotos() { const out = []; this.f.items.forEach(i => (this.f.values[i.id].photos || []).filter(p => p.defect).forEach(p => out.push({ name: itemLabel(i), p }))); return out; },
     allSrc() { return allPhotos(this.f).map(srcOf); },
     signItem() { const s = this.f.items.find(i => i.type === 'sign'); return s ? this.f.values[s.id].sign : ''; },
     qrCells() {
@@ -162,15 +171,17 @@ Pages.Report = {
           <tr><template v-for="L in LEVEL_KEYS" :key="L"><td>接收 {{ f.plan.levels[L].ac ?? '' }}</td><td>拒收 {{ f.plan.levels[L].re ?? '' }}</td></template></tr>
         </table>
         <table class="result-table">
-          <thead><tr><th style="width:44px">序号<small>STT</small></th><th>检验项目 / 品质要求<small>Nội dung kiểm tra / Yêu cầu</small></th><th style="width:26%">检查结果<small>Kết quả kiểm tra</small></th>
+          <thead><tr><th style="width:44px">序号<small>STT</small></th><th>检验项目<small>Hạng mục kiểm tra</small></th><th>标准<small>Tiêu chuẩn</small></th><th style="width:54px">缺陷等级<small>Mức lỗi</small></th><th style="width:20%">检查结果 / 不良项目<small>Kết quả kiểm tra</small></th>
             <th class="ph-col">照片<small>Hình ảnh</small></th>
             <th v-for="L in LEVEL_KEYS" :key="L" style="width:40px">{{ L }}</th></tr></thead>
           <tbody>
             <template v-for="(r,i) in rows" :key="i">
-              <tr v-if="r.head" class="grp"><td colspan="4">{{ r.name }} <small>{{ r.vi }}</small></td><td>/</td><td>/</td><td>/</td></tr>
+              <tr v-if="r.head" class="grp"><td colspan="6">{{ r.name }} <small>{{ r.vi }}</small></td><td>/</td><td>/</td><td>/</td></tr>
               <tr v-else>
                 <td class="c">{{ r.code }}</td>
-                <td>{{ r.level }}-{{ r.name }}<small v-if="r.vi">{{ r.vi }}</small><small v-if="r.remark" class="muted">{{ r.remark }}</small></td>
+                <td>{{ r.name }}<small v-if="r.vi">{{ r.vi }}</small></td>
+                <td>{{ r.std }}<small v-if="r.stdVi">{{ r.stdVi }}</small></td>
+                <td class="c small">{{ r.res==='NG' ? r.level : r.lvText }}</td>
                 <td :class="{red: r.res==='NG'}">{{ r.result }}</td>
                 <td class="ph-col"><div class="ph-cell">
                   <div v-for="p in r.photos" :key="p.id" class="rp" :class="{bad: p.defect}">
@@ -182,7 +193,7 @@ Pages.Report = {
                 <td v-for="L in LEVEL_KEYS" :key="L" class="c b red">{{ r.level===L && r.qty ? r.qty : '' }}</td>
               </tr>
             </template>
-            <tr class="sum"><td colspan="4">缺陷累计 <small>Tổng số lỗi</small></td><td v-for="L in LEVEL_KEYS" :key="L" class="c b">{{ lc.total[L] }}</td></tr>
+            <tr class="sum"><td colspan="6">缺陷累计 <small>Tổng số lỗi</small></td><td v-for="L in LEVEL_KEYS" :key="L" class="c b">{{ lc.total[L] }}</td></tr>
           </tbody>
         </table>
       </template>
@@ -227,14 +238,19 @@ Pages.Report = {
           <span class="who">审核人 <small>Nhân viên xét duyệt</small>：<b>{{ f.reviewer || '' }}</b></span>
           <span class="stamp" v-if="f.result" :class="f.result.toLowerCase()">{{ RESULTS[f.result].zh }}</span>
         </td></tr>
-        <tr><th>{{ f.type==='IQC' ? '物料评估' : '评估' }}<small>Đánh giá{{ f.type==='IQC' ? ' vật liệu' : '' }}</small></th>
+        <tr v-if="f.type==='FQC'"><th>不合格处理<small>Xử lý hàng không đạt</small></th>
+          <td><span v-for="d in DISPOSITIONS[f.type]" :key="d" class="opt" :class="{on: ncr && ncr.disposition===d}">{{ box(ncr && ncr.disposition===d) }} {{ d }}</span>
+            <div v-if="ncr && ncr.action" class="small">{{ ncr.action }}</div></td></tr>
+        <tr v-if="f.type==='FQC'"><th>审批人<small>Người phê duyệt</small></th><td><b>{{ f.reviewer || '' }}</b>　<span class="muted small">{{ f.reviewedAt }}</span></td></tr>
+        <tr v-if="f.type==='FQC'"><th>负责人<small>Người phụ trách</small></th><td><b>{{ ncr ? (ncr.confirmer || ncr.owner) : '' }}</b></td></tr>
+        <tr v-if="f.type!=='FQC'"><th>{{ f.type==='IQC' ? '物料评估' : '评估' }}<small>Đánh giá{{ f.type==='IQC' ? ' vật liệu' : '' }}</small></th>
           <td><span v-for="d in DISPOSITIONS[f.type]" :key="d" class="opt" :class="{on: ncr && ncr.disposition===d}">{{ box(ncr && ncr.disposition===d) }} {{ d }}</span>
             <span class="who">确认人 <small>Người xác nhận</small>：<b>{{ ncr ? ncr.confirmer : '' }}</b>　日期 <small>Ngày</small>：<b>{{ ncr ? ncr.closedAt : '' }}</b></span></td></tr>
-        <tr><th>结果跟进<small>Theo dõi kết quả</small></th><td>{{ ncr ? ncr.action : '' }}<span v-if="ncr" class="muted small">（{{ ncr.no }} · {{ ncr.status }}）</span></td></tr>
+        <tr v-if="f.type!=='FQC'"><th>结果跟进<small>Theo dõi kết quả</small></th><td>{{ ncr ? ncr.action : '' }}<span v-if="ncr" class="muted small">（{{ ncr.no }} · {{ ncr.status }}）</span></td></tr>
         <tr><th>备注<small>Ghi chú</small></th><td>{{ f.header.remark }}<div v-if="f.tplNote" class="small">{{ f.tplNote }}<br><span class="muted">{{ f.tplNoteVi }}</span></div></td></tr>
       </table>
 
-      <h3>基础信息照片<small>Hình ảnh thông tin cơ bản</small></h3>
+      <h3>{{ f.type==='FQC' ? '图片' : '基础信息照片' }}<small>{{ f.type==='FQC' ? 'Hình ảnh' : 'Hình ảnh thông tin cơ bản' }}</small></h3>
       <div class="pg-list base">
         <template v-for="g in baseGroups" :key="g.name">
           <figure v-for="(p,i) in g.photos" :key="p.id">
@@ -248,10 +264,9 @@ Pages.Report = {
         <h3>每轮巡检现场照片<small>Hình ảnh mỗi lần tuần kiểm</small></h3>
         <div class="pg-list"><figure v-for="g in roundGroups" :key="g.name"><img :src="srcOf(g.photos[0])" /><figcaption><b>{{ g.name }}</b> · {{ g.photos[0].by }}</figcaption></figure></div>
       </template>
-      <template v-if="patrolPhotoGroups.length">
-        <h3>不良项照片<small>Hình ảnh lỗi</small></h3>
-        <div class="pg-list"><template v-for="g in patrolPhotoGroups" :key="g.name"><figure v-for="p in g.photos" :key="p.id" :class="{bad: p.defect}"><img :src="srcOf(p)" /><figcaption><b>{{ g.name }}</b> · {{ p.time }}</figcaption></figure></template></div>
-      </template>
+      <h3>缺陷照片<small>Ảnh lỗi</small></h3>
+      <div v-if="defectPhotos.length" class="pg-list"><figure v-for="d in defectPhotos" :key="d.p.id" class="bad"><img :src="srcOf(d.p)" /><figcaption><b>{{ d.name }}</b> · {{ d.p.time }} · {{ d.p.by }}</figcaption></figure></div>
+      <p v-else class="muted small">无缺陷</p>
       <div class="sheet-foot">{{ f.docNo }} · 本报告由质检数字化管理系统生成 · 扫右上角二维码查看原始记录与照片</div>
     </div>
   </div>

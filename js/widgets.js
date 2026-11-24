@@ -21,7 +21,8 @@ Widgets.ResultTag = {
 Widgets.LevelBadge = {
   props: ['level'],
   setup() { return { LEVELS }; },
-  template: `<span v-if="level" class="lv-badge" :style="{color:LEVELS[level].color,background:LEVELS[level].bg}">{{ level }}</span>`,
+  computed: { k() { const k = String(this.level || '').split('/')[0]; return LEVELS[k] ? k : null; } },
+  template: `<span v-if="k" class="lv-badge" :style="{color:LEVELS[k].color,background:LEVELS[k].bg}">{{ level }}</span>`,
 };
 /* 中文 + 越南文（越南文可在顶栏关闭） */
 Widgets.Bi = {
@@ -187,6 +188,7 @@ Widgets.ItemField = {
       if (this.readonly) return;
       this.val.judge = this.val.judge === j ? '' : j;
       if (this.val.judge === 'NG' && !this.val.qty) this.val.qty = 1;
+      if (this.val.judge === 'NG' && !this.val.level) this.val.level = this.item.level;
       if (this.val.judge !== 'NG') { this.val.qty = null; this.val.defect = ''; }
     },
     cellNG(j, x) { return dimNG(this.item.dims[j], x); },
@@ -200,13 +202,16 @@ Widgets.ItemField = {
   <div class="item-card" :class="{ng: res==='NG'}">
     <div class="item-head">
       <span class="item-idx">{{ item.code || index }}</span>
-      <LevelBadge :level="item.level" />
+      <LevelBadge :level="item.other ? '' : (item.levels ? item.levels.join('/') : item.level)" />
       <span class="item-name"><Bi :zh="item.name" :vi="item.vi" /><i v-if="item.required && ['judge','measure','table'].includes(item.type)" class="req">*</i></span>
       <span class="spacer"></span>
       <span v-if="item.sampling==='fixed'" class="item-type">5PCS</span>
       <span v-if="res" class="item-res" :class="res.toLowerCase()">{{ res }}<template v-if="res==='NG'"> ×{{ ngQty }}</template></span>
     </div>
-    <div v-if="item.remark" class="item-remark"><Bi :zh="item.remark" :vi="item.remarkVi" /></div>
+    <div v-if="item.remark && !item.other" class="item-remark"><span class="std-lbl">标准</span><Bi :zh="item.remark" :vi="item.remarkVi" /></div>
+    <div v-if="item.other" class="item-body">
+      <el-input v-model="val.otherName" :disabled="readonly" placeholder="自填检验项目和标准（不用可留空）" />
+    </div>
 
     <div v-if="item.type==='measure'" class="item-body measure">
       <div class="limit">标准 {{ item.std }}（{{ item.lo }} ~ {{ item.hi }}）{{ item.unit }}</div>
@@ -255,7 +260,11 @@ Widgets.ItemField = {
     <div v-else-if="isPatrol(item)" class="item-body muted small">巡检项：在巡检表里按轮次填写（{{ item.type==='check' ? '✓ / ✗' : '读数 ' + (item.unit||'') }}）</div>
 
     <!-- NG：不良数 + 检查结果 + 可选缺陷代码 -->
+    <div v-if="res==='NG' && item.levels && item.type!=='judge'" class="item-ng">
+      <label><span>缺陷等级</span><el-radio-group v-model="val.level" :disabled="readonly" size="small"><el-radio-button v-for="L in item.levels" :key="L" :value="L">{{ L }}</el-radio-button></el-radio-group></label>
+    </div>
     <div v-if="res==='NG' && item.type==='judge'" class="item-ng">
+      <label v-if="item.levels"><span>缺陷等级</span><el-radio-group v-model="val.level" :disabled="readonly" size="default"><el-radio-button v-for="L in item.levels" :key="L" :value="L">{{ L }}</el-radio-button></el-radio-group></label>
       <label><span>不良数</span><el-input-number v-model="val.qty" :min="1" :disabled="readonly" size="default" controls-position="right" /></label>
       <label class="grow"><span>检查结果</span><el-input v-model="val.note" :disabled="readonly" placeholder="不良描述（必填）" /></label>
       <label><span>缺陷代码</span><el-select v-model="val.defect" :disabled="readonly" placeholder="选填" clearable filterable>

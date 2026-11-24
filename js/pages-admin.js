@@ -289,6 +289,7 @@ Pages.Designer = {
           <el-form v-if="sel===it.id" class="field-edit" label-position="top" size="small" :disabled="!canEdit" @click.stop>
             <div class="fe-grid">
               <el-form-item label="序号"><el-input v-model="it.code" /></el-form-item>
+              <el-form-item label="检验员可选等级（如 MAJ/MIN）"><el-select v-model="it.levels" multiple clearable placeholder="固定等级"><el-option v-for="L in LEVEL_KEYS" :key="L" :label="L" :value="L" /></el-select></el-form-item>
               <el-form-item label="缺陷等级"><el-select v-model="it.level" clearable><el-option v-for="L in LEVEL_KEYS" :key="L" :label="L+' '+LEVELS[L].zh" :value="L" /></el-select></el-form-item>
               <el-form-item label="分组（中文）"><el-input v-model="it.group" placeholder="如 A 外箱" /></el-form-item>
               <el-form-item label="分组（越南文）"><el-input v-model="it.groupVi" /></el-form-item>
@@ -339,9 +340,9 @@ Pages.Designer = {
 /* ---------- 基础数据 ---------- */
 Pages.Master = {
   setup() { return { MASTER, AQL_LEVELS, LOT_RANGES, aqlPlan, supplierName, customerName }; },
-  data() { return { tab: 'materials', lot: 1000, aql: 2.5 }; },
+  data() { return { tab: 'materials', lot: 1000, aql: 2.5, lvl: 'II' }; },
   computed: {
-    plan() { return aqlPlan(this.lot, this.aql); },
+    plan() { return aqlPlan(this.lot, this.aql, this.lvl); },
     aqlTable() { return LOT_RANGES.map(r => ({ range: r[1] === Infinity ? `≥ ${r[0]}` : `${r[0]} ~ ${r[1]}`, code: r[2], n: r[3], plans: AQL_LEVELS.map(a => { const p = aqlPlan(r[0], a); return p ? `${p.ac}/${p.re}${p.code !== r[2] ? ' (n=' + p.n + ')' : ''}` : '—'; }) })); },
   },
   methods: {
@@ -376,6 +377,7 @@ Pages.Master = {
       <el-tab-pane label="AQL 抽样方案" name="aql">
         <div class="aql-calc">
           <span>批量</span><el-input-number v-model="lot" :min="2" :controls="false" />
+          <span>检验水平</span><el-radio-group v-model="lvl" size="small"><el-radio-button value="I">I</el-radio-button><el-radio-button value="II">II</el-radio-button></el-radio-group>
           <span>AQL</span><el-select v-model="aql" style="width:90px"><el-option v-for="a in AQL_LEVELS" :key="a" :label="a" :value="a" /></el-select>
           <span class="aql-out" v-if="plan">→ 字码 <b>{{ plan.code }}</b>，抽 <b>{{ plan.n }}</b> 件，接收 <b>{{ plan.ac }}</b> / 拒收 <b>{{ plan.re }}</b></span>
         </div>

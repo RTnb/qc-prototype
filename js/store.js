@@ -46,7 +46,7 @@ const DISPOSITIONS = {
   IPQC: ['停线整改', '调整工艺参数', '返工', '其他'],
   FQC: ['返工', '挑选', '特采放行', '报废', '其他'],
 };
-const SAMPLING_METHODS = ['MIL-STD-105E II', '全检', '其他'];
+const SAMPLING_METHODS = ['MIL-STD-105E II', 'MIL-STD-105E I', '全检', '其他'];
 /* 字段类型 */
 const FIELD_TYPES = {
   judge: { label: '判定项', icon: 'CircleCheck', desc: 'OK / NG / NA；NG 时填不良数和检查结果' },
@@ -71,18 +71,25 @@ const LOT_RANGES = [
 ];
 // 主表按对角线规律：d = 字码序号 + AQL 序号(0.65 记 0)；d=5 为 0/1，6 ↑，7 ↓，8 起 1/2…
 const ACRE_BY_D = { 5: [0, 1], 8: [1, 2], 9: [2, 3], 10: [3, 4], 11: [5, 6], 12: [7, 8], 13: [10, 11], 14: [14, 15], 15: [21, 22] };
-function lotLetter(lotSize) { return LOT_RANGES.find(r => lotSize >= r[0] && lotSize <= r[1]); }
-function aqlPlan(lotSize, aql) {
+const LETTERS = [['A', 2], ['B', 3], ['C', 5], ['D', 8], ['E', 13], ['F', 20], ['G', 32], ['H', 50], ['J', 80], ['K', 125], ['L', 200], ['M', 315], ['N', 500], ['P', 800], ['Q', 1250]];
+const LOT_BOUNDS = [8, 15, 25, 50, 90, 150, 280, 500, 1200, 3200, 10000, 35000, 150000, 500000, Infinity];
+const LEVEL_LETTERS = { I: 'AABCCDEFGHJKLMN', II: 'ABCDEFGHJKLMNPQ' }; // 一般检验水平 I / II 的样本字码
+function lotLetterIdx(lotSize, level = 'II') {
+  if (lotSize < 2) return -1;
+  const i = LOT_BOUNDS.findIndex(b => lotSize <= b);
+  return i < 0 ? -1 : LETTERS.findIndex(l => l[0] === LEVEL_LETTERS[level][i]);
+}
+function lotLetter(lotSize, level = 'II') { const li = lotLetterIdx(lotSize, level); return li < 0 ? null : [0, 0, LETTERS[li][0], LETTERS[li][1]]; }
+function aqlPlan(lotSize, aql, level = 'II') {
   lotSize = Number(lotSize) || 0;
-  if (lotSize < 2) return null;
-  let li = LOT_RANGES.findIndex(r => lotSize >= r[0] && lotSize <= r[1]);
+  let li = lotLetterIdx(lotSize, level);
   const ai = AQL_LEVELS.indexOf(Number(aql)) - AQL_LEVELS.indexOf(0.65);
   if (li < 0 || ai < -5) return null;
   for (let guard = 0; guard < 30; guard++) {
     const d = li + ai;
-    if (ACRE_BY_D[d]) { const [, , code, n] = LOT_RANGES[li]; return { code, n: Math.min(n, lotSize), ac: ACRE_BY_D[d][0], re: ACRE_BY_D[d][1] }; }
+    if (ACRE_BY_D[d]) { const [code, n] = LETTERS[li]; return { code, n: Math.min(n, lotSize), ac: ACRE_BY_D[d][0], re: ACRE_BY_D[d][1] }; }
     if (d < 5 || d === 7) li++; else li--;
-    if (li < 0 || li >= LOT_RANGES.length) return null;
+    if (li < 0 || li >= LETTERS.length) return null;
   }
   return null;
 }
@@ -139,8 +146,8 @@ const MASTER = {
     { code: 'M-PK-02', name: '外箱', vi: 'Thùng carton', spec: '五层瓦楞 12 入', unit: 'PCS', supplier: 'S005', dims: { size: 400, weight: 650 } },
   ],
   products: [
-    { code: 'P-01', name: '香薰杯蜡 8oz（透明杯·薰衣草）', spec: 'SC-8-LV 单芯 净重 200g', customer: 'C01', wick: 1, dims: { height: 85, mouth: 78, liquid: 70, net: 200 } },
-    { code: 'P-02', name: '香薰杯蜡 12oz（磨砂杯·香草）', spec: 'SC-12-VN 双芯 净重 320g', customer: 'C02', wick: 2, dims: { height: 100, mouth: 90, liquid: 82, net: 320 } },
+    { code: 'P-01', itemNo: 'SC-8-LV', name: '香薰杯蜡 8oz（透明杯·薰衣草）', spec: 'SC-8-LV 单芯 净重 200g', customer: 'C01', wick: 1, dims: { height: 85, mouth: 78, liquid: 70, net: 200, volume: 237 } },
+    { code: 'P-02', itemNo: 'SC-12-VN', name: '香薰杯蜡 12oz（磨砂杯·香草）', spec: 'SC-12-VN 双芯 净重 320g', customer: 'C02', wick: 2, dims: { height: 100, mouth: 90, liquid: 82, net: 320, volume: 355 } },
   ],
   customers: [
     { code: 'C01', name: '客户 A', portal: true },
@@ -171,7 +178,7 @@ const G = (code, zh, vi) => ({ group: code ? `${code} ${zh}` : zh, groupVi: vi }
 const BP = (key, name, vi, min = 1) => ({ key, name, vi, min });
 const BASE_IQC = () => [BP('pack', '来料外包装及标签', 'Bao bì và nhãn hàng nhập'), BP('doc', '送货单 / 供应商出货报告', 'Phiếu giao hàng / Báo cáo xuất hàng'), BP('sample', '抽检样品全貌', 'Toàn bộ mẫu rút kiểm')];
 const BASE_IPQC = () => [BP('line', '生产线现场', 'Hiện trường chuyền sản xuất'), BP('first', '当班首件产品', 'Sản phẩm đầu tiên của ca')];
-const BASE_FQC = () => [BP('carton', '纸箱（外箱唛头）', 'Thùng carton (tem thùng)'), BP('box', '彩盒', 'Hộp màu'), BP('label', '标贴（条码 / 警示标签）', 'Tem nhãn (mã vạch / cảnh báo)'), BP('product', '产品外观（正面、侧面）', 'Ngoại quan sản phẩm', 2), BP('burn', '燃烧测试', 'Thử nghiệm đốt cháy')];
+const BASE_FQC = () => [BP('compare', '大货与样品对比照片', 'Ảnh so sánh hàng loạt với mẫu'), BP('pile', '大货货堆照片', 'Ảnh chồng hàng loạt'), BP('outer', '外包装照片', 'Ảnh bao bì ngoài')];
 
 const TPL_IQC_GLASS = {
   id: 'TPL-IQC-001', docNo: 'SL/QR-35', name: '进料检验报告（玻璃杯-透明）', nameVi: 'Báo cáo kiểm tra nguyên liệu đầu vào', type: 'IQC',
@@ -253,55 +260,81 @@ const TPL_IPQC = {
   items: patrolItems(),
 };
 function fqcItems() {
-  const j = (code, lv, name, vi, grp, o = {}) => I(name, 'judge', { id: 'f' + code, code, level: lv, vi, ...grp, ...o });
-  const A = G('A', '外箱', 'Thùng carton'), B = G('B', '产品包装（参考黄金样）', 'Đóng gói sản phẩm (Tham khảo bản mẫu của khách hàng)');
-  const C = G('C', '外观', 'Kiểm tra bên ngoài'), D = G('D', '灯芯位置', 'Vị trí tim đèn');
-  const E = G('', '订单要求核对', 'Yêu cầu đơn hàng'), L = G('L', '产品内部测试', 'Thử nghiệm nội bộ sản phẩm');
+  // 检验项目 → name/vi；标准 → remark/remarkVi；等级写「MAJ/MIN」的项由检验员判 NG 时选择
+  const j = (code, grp, name, vi, std, stdVi, lv, o = {}) => {
+    const levels = lv.includes('/') ? lv.split('/') : null;
+    return I(name, 'judge', { id: 'f' + code, code, ...grp, vi, remark: std, remarkVi: stdVi, level: levels ? levels[0] : lv, levels, short: `${name}·${std}`, ...o });
+  };
+  const other = (code, grp) => I('其他', 'judge', { id: 'f' + code, code, ...grp, vi: 'Khác', level: 'MAJ', levels: ['CR', 'MAJ', 'MIN'], other: true, required: false, short: '其他', remark: '检验员自填项目和标准，不用可留空' });
+  const A = G('A', '外箱', 'Thùng carton'), B = G('B', '产品包装', 'Đóng gói sản phẩm (Tham khảo bản mẫu của khách hàng)'), C = G('C', '安全性', 'Tính an toàn');
+  const D = G('D', '材质', 'Chất liệu'), E = G('E', '规格', 'Quy cách'), F = G('F', '功能', 'Chức năng'), GG = G('G', '外观', 'Ngoại quan');
+  const P5 = '与订单要求和样品要求一致，无特殊要求按 ±5% 执行', P5vi = 'Đúng yêu cầu đơn hàng và mẫu; không có yêu cầu đặc biệt thì áp dụng +/-5%';
+  const tbl = dims => ({ type: 'table', samples: 5, dims });
+  const BOX = ['彩盒', 'Hộp màu'], LBL = ['标签', 'Tem nhãn'], SURF = ['表面', 'Bề mặt'], WICK = ['灯芯', 'Tim đèn'], POST = ['喷涂烤花电镀等后加工', 'Gia công sau (phun sơn, decal nung, mạ điện…)'];
   return [
-    j('A1', 'CR', '错误的唛头印刷', 'Sai tem thùng', A, { mustPhoto: true }),
-    j('A2', 'MAJ', '箱子毁损', 'Thùng bị hư hỏng', A),
-    j('A3', 'CR', '错误的装箱数', 'Số lượng đóng gói bị sai', A),
-    j('A4', 'MAJ', '错误的入箱方向/错误的装箱方式', 'Để sai hướng đóng gói / Phương pháp đóng gói sai', A),
-    j('A5', 'CR', '条码不能被验证', 'Mã UPC không được xác nhận', A),
-    j('A6', 'CR', '摔箱测试失败', 'Thử nghiệm thả hộp không đạt', A),
-    j('B1', 'MAJ', '盒子损坏', 'Hộp bị hư', B),
-    j('B2', 'MAJ', '盒子不能平放', 'Hộp để không vững', B),
-    j('B3', 'MIN', '日期标和箱唛不一致', 'Tem ngày tháng không khớp với thùng', B),
-    j('B4', 'CR', '内有异物', 'Dị vật bên trong', B),
-    j('B5', 'CR', '图样不符合留样', 'Hình mẫu không khớp với bản mẫu của khách hàng', B),
-    j('B6', 'CR', '条码不能被验证', 'Mã UPC không được xác nhận', B),
-    j('B7', 'MAJ', '错误的产品入盒方向', 'Để sai hướng đóng gói', B),
-    j('C1', 'MAJ', '蜡身没有裂纹', 'Thân sáp cầy có vết nứt không', C),
-    j('C2', 'MAJ', '干净', 'Sạch sẽ', C),
-    j('C3', 'MIN', '没有粘壁', 'Có vết dính không', C),
-    j('C4', 'MAJ', '蜡表面光滑', 'Mặt sáp có mịn không', C),
-    j('C5', 'MAJ', '蜡身不起花', 'Thân sáp không nổi hoa tuyết', C),
-    j('C6', 'MAJ', '蜡身起泡', 'Thân nến nổi bong bóng', C),
-    j('C7', 'CR', '标签条码正确性（尺寸是否符合要求；是否在检验后使用）', 'Tính chính xác của tem mã vạch (kích thước có phù hợp yêu cầu không; có phải sử dụng sau khi kiểm nghiệm không)', C),
-    j('C8', 'MAJ', '标签条码位置', 'Vị trí tem mã vạch', C),
-    j('D1', 'MAJ', '一个灯芯居中', 'Trung tâm 1 tim đèn', D, { remark: '单芯产品适用，多芯选 NA' }),
-    j('D2', 'MAJ', '多灯芯均匀分布', 'Phân bố đồng đều nhiều tim đèn', D, { remark: '多芯产品适用，单芯选 NA' }),
-    j('E1', 'CR', '灯芯型号符合订单要求', 'Mô hình tim đèn đáp ứng yêu cầu đặt hàng', E),
-    j('F1', 'CR', '（容器）尺寸符合订单要求', 'Kích thước dung môi đáp ứng yêu cầu đặt hàng', E, { sampling: 'fixed', samples: 5, remark: '实测 5PCS，公差 ±3%（待确认，可在模版中修改）', type: 'table', dims: [{ name: '杯高 mm', key: 'height', pct: 3, std: 85 }, { name: '口径 mm', key: 'mouth', pct: 3, std: 78 }] }),
-    j('G1', 'CR', '（容器）效果符合订单要求', 'Hiệu ứng dung môi đáp ứng yêu cầu đặt hàng', E),
-    j('G2', 'CR', '（容器）外观无损坏', 'Dung môi không ảnh hưởng về ngoại hình', E),
-    j('H1', 'CR', '产品颜色符合订单要求', 'Màu sắc sản phẩm đáp ứng yêu cầu đặt hàng', E),
-    j('I1', 'CR', '产品香味符合订单要求', 'Mùi hương sản phẩm đáp ứng yêu cầu đặt hàng', E),
-    j('J1', 'CR', '液面高度符合订单要求', 'Độ cao mặt sáp đáp ứng yêu cầu đặt hàng', E, { sampling: 'fixed', samples: 5, remark: '实测 5PCS，公差 ±3%（待确认，可在模版中修改）', type: 'table', dims: [{ name: '液面高度 mm', key: 'liquid', pct: 3, std: 70 }] }),
-    j('K1', 'CR', '产品重量符合订单要求', 'Trọng lượng sản phẩm đáp ứng yêu cầu đặt hàng', E, { sampling: 'fixed', samples: 5, remark: '实测 5PCS，公差 ±3%（待确认，可在模版中修改）', type: 'table', dims: [{ name: '净重 g', key: 'net', pct: 3, std: 200 }] }),
-    j('L1', 'CR', '燃烧测试符合产品标准', 'Thử nghiệm đốt cháy đạt tiêu chuẩn sản phẩm', L),
-    j('L2', 'CR', '变色测试符合产品标准', 'Thử nghiệm đổi màu đạt tiêu chuẩn sản phẩm', L),
-    j('L3', 'CR', '高温测试符合产品标准', 'Thử nghiệm nhiệt độ cao đạt tiêu chuẩn sản phẩm', L),
-    j('L4', 'CR', '低温测试符合产品标准', 'Thử nghiệm nhiệt độ thấp đạt tiêu chuẩn sản phẩm', L),
-    j('L5', 'CR', '黑烟测试符合产品标准', 'Thử nghiệm khói đạt tiêu chuẩn sản phẩm', L),
+    j('A1', A, '印刷内容', 'Nội dung in', '印刷正确', 'In đúng', 'CR'),
+    j('A2', A, '完整性', 'Tính nguyên vẹn', '完整无损坏', 'Nguyên vẹn, không hư hỏng', 'MAJ'),
+    j('A3', A, '装箱率', 'Số lượng đóng thùng', '装箱率正确', 'Số lượng đóng gói đúng', 'CR'),
+    j('A4', A, '装箱方式', 'Phương pháp đóng thùng', '装箱方式正确', 'Phương pháp đóng gói đúng', 'MAJ'),
+    j('A5', A, '条码', 'Mã vạch', '条码可以扫描', 'Mã vạch quét được', 'CR'),
+    j('A6', A, '外箱尺寸', 'Kích thước thùng carton', '装入产品后大小合适', 'Kích thước vừa vặn sau khi cho sản phẩm vào', 'MAJ'),
+    j('A7', A, '摔箱', 'Thả rơi thùng', '摔箱无破损', 'Thả thùng không hư hỏng', 'CR'),
+    other('A8', A),
+    j('B1', B, ...BOX, '尺寸正确', 'Kích thước đúng', 'MAJ'),
+    j('B2', B, ...BOX, '印刷清晰', 'In rõ nét', 'MIN'),
+    j('B3', B, ...BOX, '印刷正确', 'In đúng', 'CR'),
+    j('B4', B, ...BOX, '条码可读', 'Mã vạch đọc được', 'CR'),
+    j('B5', B, ...LBL, '尺寸正确', 'Kích thước đúng', 'MAJ'),
+    j('B6', B, ...LBL, '印刷清晰', 'In rõ nét', 'MIN'),
+    j('B7', B, ...LBL, '印刷正确', 'In đúng', 'CR'),
+    j('B8', B, ...LBL, '条码可读', 'Mã vạch đọc được', 'CR'),
+    j('B9', B, ...LBL, '粘贴位置正确', 'Vị trí dán đúng', 'MAJ/MIN'),
+    j('B10', B, ...LBL, '不翘边', 'Không bong mép', 'MIN'),
+    j('B11', B, ...LBL, '没有磨损', 'Không trầy mòn', 'MAJ/MIN'),
+    j('B12', B, ...LBL, '没有脏污', 'Không bẩn', 'MAJ/MIN'),
+    other('B13', B), other('B14', B),
+    j('C1', C, '安全性-不易识别', 'An toàn - khó nhận biết', '没有隐藏的尖锐物品及可以伤人的物质', 'Không có vật sắc nhọn ẩn hoặc chất có thể gây thương tích', 'CR'),
+    j('C2', C, '安全性-容易识别', 'An toàn - dễ nhận biết', '无破损', 'Không vỡ, không hư hỏng', 'MAJ'),
+    j('C3', C, '安全性-容易识别', 'An toàn - dễ nhận biết', '无磕碰', 'Không va đập, sứt mẻ', 'MAJ'),
+    j('C4', C, '安全性-容易识别', 'An toàn - dễ nhận biết', '无尖边利角', 'Không có cạnh sắc, góc nhọn', 'MAJ'),
+    j('D', D, '材质', 'Chất liệu', '与订单要求和样品要求一致', 'Đúng yêu cầu đơn hàng và mẫu', 'MAJ'),
+    j('E1', E, '尺寸', 'Kích thước', P5, P5vi, 'MAJ', tbl([{ name: '杯高 mm', key: 'height', pct: 5, std: 85 }, { name: '口径 mm', key: 'mouth', pct: 5, std: 78 }])),
+    j('E2', E, '重量', 'Trọng lượng', P5, P5vi, 'MAJ', tbl([{ name: '净重 g', key: 'net', pct: 5, std: 200 }])),
+    j('E3', E, '容量', 'Dung tích', P5, P5vi, 'MAJ', tbl([{ name: '容量 ml', key: 'volume', pct: 5, std: 237 }])),
+    j('F1', F, '燃烧', 'Đốt cháy', '燃烧合格', 'Đốt cháy đạt', 'CR'),
+    j('F2', F, '香味', 'Mùi hương', '香味与订单要求和样品要求一致', 'Mùi hương đúng yêu cầu đơn hàng và mẫu', 'CR'),
+    j('G1', GG, '异物', 'Dị vật', '没有蚊虫', 'Không có côn trùng', 'CR'),
+    j('G2', GG, '异物', 'Dị vật', '没有血迹', 'Không có vết máu', 'CR'),
+    j('G3', GG, '异物', 'Dị vật', '没有刀片等尖锐物体', 'Không có lưỡi dao hoặc vật sắc nhọn', 'CR'),
+    j('G4', GG, '异物', 'Dị vật', '没有其他异物', 'Không có dị vật khác', 'MAJ'),
+    j('G5', GG, '整洁', 'Sạch sẽ', '表面无脏污', 'Bề mặt không bẩn', 'MAJ/MIN'),
+    j('G6', GG, ...SURF, '无滴蜡', 'Không có giọt sáp', 'MAJ/MIN'),
+    j('G7', GG, ...SURF, '平整无凹陷', 'Phẳng, không lõm', 'MAJ/MIN'),
+    j('G8', GG, ...SURF, '没有锯齿状边缘', 'Không có mép răng cưa', 'MAJ/MIN'),
+    j('G9', GG, ...SURF, '无粘壁发白', 'Không dính thành cốc bị trắng', 'MAJ/MIN'),
+    j('G10', GG, ...SURF, '无气泡', 'Không có bọt khí', 'MAJ/MIN'),
+    j('G11', GG, ...SURF, '无划伤', 'Không trầy xước', 'MAJ/MIN'),
+    j('G12', GG, ...SURF, '无香精析出', 'Không chảy tinh dầu', 'MAJ/MIN'),
+    j('G13', GG, ...SURF, '无螺纹', 'Không có vân gợn', 'MAJ/MIN'),
+    j('G14', GG, ...SURF, '无胶丝', 'Không có sợi keo', 'MAJ/MIN'),
+    j('G15', GG, ...WICK, '灯芯型号正确', 'Loại tim đèn đúng', 'MAJ'),
+    j('G16', GG, ...WICK, '位置居中；不偏离要求位置的 2%', 'Tim nằm giữa; lệch không quá 2% so với vị trí yêu cầu', 'MAJ'),
+    j('G17', GG, ...WICK, '灯芯长度 8–12mm', 'Chiều dài tim đèn 8-12mm', 'MAJ/MIN', tbl([{ name: '灯芯长度 mm', std: 10, lo: 8, hi: 12 }])),
+    j('G18', GG, ...POST, '无划伤', 'Không trầy xước', 'MAJ/MIN'),
+    j('G19', GG, ...POST, '无缺失', 'Không thiếu sót', 'MAJ/MIN'),
+    j('G20', GG, ...POST, '附着力合格', 'Độ bám dính đạt', 'MAJ/MIN'),
+    j('G21', GG, ...POST, '颜色与订单/样品一致', 'Màu sắc đúng đơn hàng/mẫu', 'MAJ/MIN'),
+    j('G22', GG, ...POST, '图案与订单/样品一致', 'Hoa văn đúng đơn hàng/mẫu', 'MAJ'),
+    other('G23', GG), other('G24', GG), other('G25', GG),
   ];
 }
 const TPL_FQC = {
   id: 'TPL-FQC-001', docNo: 'SL/QR-38', name: '成品检验报告', nameVi: 'Báo cáo kiểm nghiệm thành phẩm', type: 'FQC',
-  version: 1, status: '已发布', updatedAt: '2026-11-03', bind: { materials: [], processes: [] }, isDefault: true, ngPhoto: true,
-  plan: { method: 'MIL-STD-105E II', aql: { CR: 0, MAJ: 2.5, MIN: 4.0 }, fixed: { n: 5, ac: { CR: 0, MAJ: 1, MIN: 1 } } },
+  version: 2, status: '已发布', updatedAt: '2026-11-24', bind: { materials: [], processes: [] }, isDefault: true, ngPhoto: true,
+  plan: { method: 'MIL-STD-105E I', aql: { CR: 0, MAJ: 2.5, MIN: 4.0 } },
   itemPhoto: 'all', basePhotos: BASE_FQC(),
-  note: 'F1 尺寸、J1 液面高度、K1 重量每批实测 5PCS，任一件超差即判不合格（CR）。纸质表上 MAJ / MIN 的 AQL 为空白，原型暂按 MAJ 2.5、MIN 4.0，可在模版中修改', noteVi: '',
+  note: 'E1 尺寸、E2 重量、E3 容量实测 5PCS，无特殊要求按 ±5%。表上 MAJ / MIN 的 AQL 为空白，原型暂按 MAJ 2.5、MIN 4.0，可在模版中修改。等级写「MAJ/MIN」的项由检验员按实际情况选择。',
+  noteVi: 'E1 kích thước, E2 trọng lượng, E3 dung tích đo thực tế 5PCS; không có yêu cầu đặc biệt thì áp dụng +/-5%.',
   items: fqcItems(),
 };
 const DEFAULT_TEMPLATES = [TPL_IQC_GLASS, TPL_IQC_GENERAL, TPL_IPQC, TPL_FQC];
@@ -312,14 +345,15 @@ function materialOf(code) { return MASTER.materials.find(s => s.code === code) |
 function materialName(code) { return (materialOf(code) || {}).name || ''; }
 function customerName(code) { return (MASTER.customers.find(s => s.code === code) || {}).name || ''; }
 function defectName(code) { const d = MASTER.defects.find(x => x.code === code); return d ? `${d.code} ${d.name}` : ''; }
-function itemLabel(it) { return (it.code ? it.code + ' ' : '') + it.name; }
+function itemLabel(it) { return (it.code ? it.code + ' ' : '') + (it.short || it.name); }
+function sizeText(p) { return p && p.dims && p.dims.mouth ? `Φ${p.dims.mouth}×${p.dims.height}mm` : ''; }
 
 function newFormSkeleton(type, no, date = new Date()) {
   return {
     no, type, date: ymd(date), status: 'draft', result: null, suggest: null,
     header: {
       supplier: '', material: '', spec: '', qty: null, receiveDate: ymd(date), order: '', lot: '',
-      customer: '', product: '', method: 'MIL-STD-105E II', customN: null,
+      customer: '', product: '', method: 'MIL-STD-105E II', customN: null, size: '', visit: '首次',
       workshop: '', orderQty: null, temp: null, humidity: null, page: 1, remark: '',
     },
     tplId: '', tplVersion: null, tplName: '', docNo: '', tplPlan: null, tplPatrol: null, tplNote: '', tplNoteVi: '', ngPhoto: true,
@@ -340,7 +374,7 @@ function matchTemplate(f, templates) {
 }
 function blankValue(it, rounds = 0) {
   return {
-    value: null, judge: '', qty: null, note: '', defect: '', photos: [], sign: '',
+    value: null, judge: '', qty: null, note: '', defect: '', photos: [], sign: '', level: '', otherName: '',
     rows: it.type === 'table' ? Array.from({ length: it.samples || 5 }, () => (it.dims || []).map(() => null)) : null,
     cells: isPatrol(it) ? Array.from({ length: rounds }, () => ({ v: it.type === 'check' ? '' : null, ng: false })) : null,
   };
@@ -388,13 +422,14 @@ function recalcPlan(f) {
   const method = h.method || tp.method;
   const prev = f.plan;
   let n = null, code = '', levels = {};
-  if (method === 'MIL-STD-105E II') {
-    const r = qty >= 2 ? lotLetter(qty) : null;
+  if (method.startsWith('MIL-STD-105E')) {
+    const lvl = method.endsWith(' I') ? 'I' : 'II';
+    const r = qty >= 2 ? lotLetter(qty, lvl) : null;
     if (r) { code = r[2]; n = Math.min(r[3], qty); }
     LEVEL_KEYS.forEach(L => {
       const a = tp.aql[L];
       if (a === 0) levels[L] = { aql: 0, ac: 0, re: 1 };
-      else { const p = aqlPlan(qty, a); levels[L] = p ? { aql: a, ac: p.ac, re: p.re } : { aql: a, ac: null, re: null }; }
+      else { const p = aqlPlan(qty, a, lvl); levels[L] = p ? { aql: a, ac: p.ac, re: p.re } : { aql: a, ac: null, re: null }; }
     });
   } else if (method === '全检') {
     n = qty || null;
@@ -445,7 +480,7 @@ function itemQty(it, v) {
 function photoNeed(it, v, rule = {}) {
   const res = itemResult(it, v);
   let n = it.type === 'photo' ? (it.minPhotos || 1) : (it.mustPhoto ? (it.minPhotos || 1) : 0);
-  if (rule.all && ['judge', 'measure', 'table'].includes(it.type)) n = Math.max(n, 1);
+  if (rule.all && ['judge', 'measure', 'table'].includes(it.type) && !(it.other && !v.judge)) n = Math.max(n, 1);
   if (res === 'NG') n = Math.max(n, 1);
   if (res === 'NA') n = 0;
   return n;
@@ -475,7 +510,7 @@ function summarize(f) {
     if (isPatrol(it)) (v.cells || []).slice(0, f.rounds.length).forEach(c => { if (cellFilled(it, c)) pTotal++; if (cellNG(it, c)) pNg++; });
     if (itemResult(it, v) === 'NG') {
       ngItems++; names.push(itemLabel(it));
-      lv[it.sampling === 'fixed' ? 'fixed' : 'aql'][it.level || 'MAJ'] += itemQty(it, v);
+      lv[it.sampling === 'fixed' ? 'fixed' : 'aql'][v.level || it.level || 'MAJ'] += itemQty(it, v);
     }
   });
   const total = { CR: lv.aql.CR + lv.fixed.CR, MAJ: lv.aql.MAJ + lv.fixed.MAJ, MIN: lv.aql.MIN + lv.fixed.MIN };
@@ -509,7 +544,7 @@ function validateForm(f) {
   const errs = [], h = f.header;
   if (f.type === 'IQC') { if (!h.supplier) errs.push('请选择供应商'); if (!h.material) errs.push('请选择物料'); if (!h.qty) errs.push('请填写来料数量'); }
   if (f.type === 'IPQC') { if (!h.product) errs.push('请选择产品'); if (!h.order) errs.push('请填写订单号/货号'); if (!f.rounds.length) errs.push('至少完成 1 轮巡检'); }
-  if (f.type === 'FQC') { if (!h.customer) errs.push('请选择客户'); if (!h.product) errs.push('请选择产品'); if (!h.qty) errs.push('请填写生产数量'); if (!h.order) errs.push('请填写订单号'); }
+  if (f.type === 'FQC') { if (!h.order) errs.push('请填写订单号'); if (!h.product) errs.push('请选择货号'); if (!h.qty) errs.push('请填写验货数量'); }
   if (f.plan && f.plan.method === '其他' && !f.plan.n) errs.push('「其他抽样计划」请填写抽样数量');
   (f.basePhotoDefs || []).forEach(d => { if ((f.basePhotos[d.key] || []).length < d.min) errs.push(`基础信息照片「${d.name}」至少需要 ${d.min} 张`); });
   if (f.roundPhoto) f.rounds.forEach((r, k) => { if ((r.photos || []).length < f.roundPhoto) errs.push(`第 ${k + 1} 轮（${r.time}）需要拍 ${f.roundPhoto} 张现场照片`); });
@@ -524,6 +559,7 @@ function validateForm(f) {
       if (it.type === 'number' && !filled(v.value)) errs.push(`「${label}」未填写`);
       if (it.type === 'sign' && !v.sign) errs.push(`「${label}」未签名`);
     }
+    if (it.other && v.judge && !v.otherName) errs.push(`「${label}」请填写自填的检验项目和标准`);
     if (r === 'NG' && it.type === 'judge' && !v.note && !v.defect) errs.push(`「${label}」判 NG，请填写检查结果（不良描述）`);
     const need = photoNeed(it, v, rule);
     if (defectPhotoMissing(it, v)) errs.push(`「${label}」判不合格，必须拍一张不良部位的照片（不能用引用的照片）`);
@@ -584,7 +620,8 @@ function buildDemo(templates) {
         bad = rnd() < 0.18;
       } else {
         const p = pick(MASTER.products);
-        Object.assign(h, { product: p.code, spec: p.spec, customer: p.customer, qty: pick([1200, 2400, 4800]), order: `SO-26${pad(Math.floor(rnd() * 30) + 101, 3)}` });
+        const oq = pick([1200, 2400, 4800]);
+        Object.assign(h, { product: p.code, spec: p.spec, customer: p.customer, orderQty: oq, qty: oq, size: sizeText(p), visit: rnd() < 0.15 ? '复验' : '首次', order: `SO-26${pad(Math.floor(rnd() * 30) + 101, 3)}` });
         bad = rnd() < 0.08;
       }
       applyTemplate(f, templates);
@@ -624,8 +661,8 @@ function fillDemoValues(f, bad) {
   (f.basePhotoDefs || []).forEach(d => { f.basePhotos[d.key] = Array.from({ length: d.min }, (_, i) => ph(d.name + (d.min > 1 ? ` ${i + 1}` : ''), 160)); });
   f.items.forEach(it => {
     const v = f.values[it.id];
-    if (it.type === 'judge') v.judge = 'OK';
-    if (it.type === 'table') v.rows = Array.from({ length: it.samples }, () => it.dims.map(d => +(d.std * (1 + (rnd() - 0.5) * d.pct / 100)).toFixed(d.std >= 100 ? 1 : 2)));
+    if (it.type === 'judge' && !it.other) v.judge = 'OK';
+    if (it.type === 'table') v.rows = Array.from({ length: it.samples }, () => it.dims.map(d => { const span = filled(d.pct) ? d.std * d.pct / 100 : (d.hi - d.lo) / 2; return +(d.std + (rnd() - 0.5) * span).toFixed(d.std >= 100 ? 1 : 2); }));
     if (isPatrol(it)) v.cells = f.rounds.map(() => it.type === 'check' ? { v: 'OK', ng: false } : { v: +(((filled(it.std) ? it.std : DEMO_READING[it.code]) || 10) * (1 + (rnd() - 0.5) * 0.04)).toFixed(1), ng: false });
   });
   // 单芯产品 D2 选 NA，双芯产品 D1 选 NA
@@ -653,19 +690,19 @@ function fillDemoValues(f, bad) {
   }
   const judges = f.items.filter(i => i.type === 'judge');
   if (bad) {
-    const cands = judges.filter(i => i.level !== 'MIN' && f.values[i.id].judge !== 'NA');
+    const cands = judges.filter(i => !i.other && i.level !== 'MIN' && f.values[i.id].judge !== 'NA');
     const it = pick(cands); const v = f.values[it.id];
     const lvl = f.plan && f.plan.levels[it.level];
-    v.judge = 'NG';
+    v.judge = 'NG'; v.level = it.level;
     v.qty = it.sampling === 'fixed' ? 2 : (it.level === 'CR' ? 1 : ((lvl && lvl.re) || 2) + Math.floor(rnd() * 2));
     v.note = `抽检发现 ${v.qty} PCS 不良`;
     v.photos = [...v.photos, photo(it, 0)];
   } else if (rnd() < 0.3) {
     // 有轻微缺陷但未超接收数：批次仍合格
-    const minors = judges.filter(i => i.level === 'MIN' || (i.level === 'MAJ' && i.sampling !== 'fixed'));
+    const minors = judges.filter(i => !i.other && (i.level === 'MIN' || (i.level === 'MAJ' && i.sampling !== 'fixed')));
     if (minors.length) {
       const it = pick(minors), v = f.values[it.id], lvl = f.plan && f.plan.levels[it.level];
-      if (lvl && lvl.ac >= 1) { v.judge = 'NG'; v.qty = 1; v.note = '抽检发现 1 PCS 轻微不良'; v.photos = [...v.photos, photo(it, 30)]; }
+      if (lvl && lvl.ac >= 1) { v.judge = 'NG'; v.level = it.level; v.qty = 1; v.note = '抽检发现 1 PCS 轻微不良'; v.photos = [...v.photos, photo(it, 30)]; }
     }
   }
 }
@@ -683,7 +720,7 @@ function anomaliesOf(f) {
   const photoOf = v => (v.photos || []).find(isDefectPhoto) || (v.photos || [])[0] || null;
   f.items.forEach(it => {
     const v = f.values[it.id]; if (!v) return;
-    const base = { no: f.no, type: f.type, itemId: it.id, code: it.code, item: itemLabel(it), level: it.level || 'MAJ', photo: photoOf(v) };
+    const base = { no: f.no, type: f.type, itemId: it.id, code: it.code, item: itemLabel(it) + (v.otherName ? '：' + v.otherName : ''), level: v.level || it.level || 'MAJ', photo: photoOf(v) };
     if (it.type === 'judge' && v.judge === 'NG') out.push({ ...base, key: `${f.no}|${it.id}|j`, detail: `NG ×${Math.max(1, Number(v.qty) || 1)}${v.note ? '：' + v.note : ''}`, std: it.remark || '—' });
     if (it.type === 'measure' && measureState(it, v.value) === 'NG') out.push({ ...base, key: `${f.no}|${it.id}|m`, detail: `实测 ${v.value} ${it.unit}`, std: `${it.std}（${it.lo}~${it.hi}）` });
     if (it.type === 'table') (v.rows || []).forEach((row, i) => row.forEach((x, j) => {
@@ -737,7 +774,7 @@ function demoAnomalyStatus(forms) {
 }
 
 /* ---------- 全局 store（本地持久化） ---------- */
-const STORE_KEY = 'qc-proto-v6';
+const STORE_KEY = 'qc-proto-v7';
 function freshState() {
   _seed = 20261123;
   const templates = clone(DEFAULT_TEMPLATES);

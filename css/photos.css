@@ -50,3 +50,5 @@
   .items-head .photo-rule { order: 5; }
 }
 .std-input { width: 80px; margin-top: 3px; border: 1px solid var(--ng); border-radius: 4px; text-align: center; font: inherit; font-size: 12px; padding: 2px 4px; }
+.std-lbl { display: inline-block; font-size: 11px; color: var(--ink-3); border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; margin-right: 6px; vertical-align: top; }
+.item-remark { display: flex; align-items: flex-start; }

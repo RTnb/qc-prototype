@@ -253,6 +253,7 @@ Pages.Form = {
       const p = MASTER.products.find(x => x.code === this.f.header.product);
       if (!p) return;
       this.f.header.spec = p.spec;
+      this.f.header.size = sizeText(p);
       resolveSpec(this.f);
       if (this.f.type === 'FQC') {
         this.f.header.customer = p.customer;
@@ -361,14 +362,16 @@ Pages.Form = {
               <el-form-item><template #label><Bi zh="页次" vi="Trang" inline /></template><el-input-number v-model="f.header.page" :min="1" style="width:100%" /></el-form-item>
             </template>
             <template v-else>
-              <el-form-item required><template #label><Bi zh="客户名称" vi="Khách hàng" inline /></template>
-                <el-select v-model="f.header.customer"><el-option v-for="c in MASTER.customers" :key="c.code" :label="c.name" :value="c.code" /></el-select></el-form-item>
-              <el-form-item required><template #label><Bi zh="产品名称" vi="Sản phẩm" inline /></template>
-                <el-select v-model="f.header.product" @change="onProduct"><el-option v-for="p in MASTER.products" :key="p.code" :label="p.name" :value="p.code" /></el-select></el-form-item>
-              <el-form-item><template #label><Bi zh="规格型号" vi="Mã quy cách" inline /></template><el-input v-model="f.header.spec" /></el-form-item>
-              <el-form-item required><template #label><Bi zh="生产数量" vi="Số lượng sản xuất" inline /></template><el-input-number v-model="f.header.qty" :min="0" :controls="false" @change="recalc" style="width:100%" /></el-form-item>
+              <el-form-item required><template #label><Bi zh="订单号" vi="Số đơn hàng" inline /></template><el-input v-model="f.header.order" /></el-form-item>
+              <el-form-item required><template #label><Bi zh="货号" vi="Mã hàng" inline /></template>
+                <el-select v-model="f.header.product" @change="onProduct" placeholder="选择货号（自动带出尺寸和标准）"><el-option v-for="p in MASTER.products" :key="p.code" :label="p.itemNo+' '+p.name" :value="p.code" /></el-select></el-form-item>
+              <el-form-item><template #label><Bi zh="尺寸" vi="Kích thước" inline /></template><el-input v-model="f.header.size" /></el-form-item>
+              <el-form-item><template #label><Bi zh="订单数量" vi="Số lượng đơn hàng" inline /></template><el-input-number v-model="f.header.orderQty" :min="0" :controls="false" style="width:100%" /></el-form-item>
+              <el-form-item required><template #label><Bi zh="验货数量" vi="Số lượng kiểm hàng" inline /></template><el-input-number v-model="f.header.qty" :min="0" :controls="false" @change="recalc" style="width:100%" /></el-form-item>
               <el-form-item><template #label><Bi zh="检验日期" vi="Ngày kiểm tra" inline /></template><el-input :model-value="f.date" disabled /></el-form-item>
-              <el-form-item required><template #label><Bi zh="订单号" vi="Mã đơn hàng" inline /></template><el-input v-model="f.header.order" /></el-form-item>
+              <el-form-item><template #label><Bi zh="验货员" vi="Nhân viên kiểm hàng" inline /></template><el-input :model-value="f.inspector" disabled /></el-form-item>
+              <el-form-item><template #label><Bi zh="验货状态" vi="Trạng thái kiểm hàng" inline /></template>
+                <el-radio-group v-model="f.header.visit"><el-radio-button value="首次">首次</el-radio-button><el-radio-button value="复验">复验</el-radio-button></el-radio-group></el-form-item>
             </template>
           </el-form>
         </el-card>
@@ -435,7 +438,7 @@ Pages.Form = {
           <template v-if="f.type!=='IPQC' && f.plan">
             <div class="side-lbl"><Bi zh="抽样计划" vi="Kế hoạch rút kiểm" inline /></div>
             <el-radio-group v-model="f.header.method" size="small" :disabled="!editable" class="method" @change="recalc">
-              <el-radio-button v-for="m in SAMPLING_METHODS" :key="m" :value="m">{{ m==='MIL-STD-105E II'?'105E II':m }}</el-radio-button>
+              <el-radio-button v-for="m in SAMPLING_METHODS" :key="m" :value="m">{{ m.startsWith('MIL') ? m.replace('MIL-STD-', '') : m }}</el-radio-button>
             </el-radio-group>
             <div class="sum-row"><span>抽样数量 <small class="muted" v-if="f.plan.code">字码 {{ f.plan.code }}</small></span>
               <el-input-number v-if="f.plan.method==='其他'" v-model="f.header.customN" :min="1" size="small" :disabled="!editable" @change="recalc" />
