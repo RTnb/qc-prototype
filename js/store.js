@@ -178,7 +178,35 @@ const G = (code, zh, vi) => ({ group: code ? `${code} ${zh}` : zh, groupVi: vi }
 const BP = (key, name, vi, min = 1) => ({ key, name, vi, min });
 const BASE_IQC = () => [BP('pack', '来料外包装及标签', 'Bao bì và nhãn hàng nhập'), BP('doc', '送货单 / 供应商出货报告', 'Phiếu giao hàng / Báo cáo xuất hàng'), BP('sample', '抽检样品全貌', 'Toàn bộ mẫu rút kiểm')];
 const BASE_IPQC = () => [BP('line', '生产线现场', 'Hiện trường chuyền sản xuất'), BP('first', '当班首件产品', 'Sản phẩm đầu tiên của ca')];
-const BASE_FQC = () => [BP('compare', '大货与样品对比照片', 'Ảnh so sánh hàng loạt với mẫu'), BP('pile', '大货货堆照片', 'Ảnh chồng hàng loạt'), BP('outer', '外包装照片', 'Ảnh bao bì ngoài')];
+/* 成品照片清单：参考第三方验货报告的常见分类（货物与抽样 → 外箱 → 包装 → 产品 → 测量与测试，缺陷照片自动汇总）。
+   covers：这张照片同时作为哪些检验项的证据，拍完自动引用过去，不用重复拍 */
+const PG = (group, groupVi) => (key, name, vi, hint, covers = [], min = 1) => ({ key, name, vi, hint, covers, min, group, groupVi });
+const BASE_FQC = () => {
+  const g1 = PG('一、货物与抽样', 'Hàng hóa & rút mẫu'), g2 = PG('二、外箱', 'Thùng carton'), g3 = PG('三、产品包装', 'Đóng gói sản phẩm');
+  const g4 = PG('四、产品', 'Sản phẩm'), g5 = PG('五、测量与测试', 'Đo lường & thử nghiệm');
+  return [
+    g1('pile', '大货货堆', 'Ảnh chồng hàng loạt', '拍全货堆，能看出堆放和总箱数'),
+    g1('pick', '随机抽箱', 'Rút thùng ngẫu nhiên', '所抽箱子排开，箱上写明箱号'),
+    g2('mark1', '外箱正唛', 'Tem thùng mặt chính', '唛头文字、条码完整可读', ['A1', 'A5']),
+    g2('mark2', '外箱侧唛', 'Tem thùng mặt bên', '侧唛内容完整可读', ['A1']),
+    g2('csize', '外箱尺寸测量', 'Đo kích thước thùng', '卷尺贴箱边，拍到读数', ['A6']),
+    g2('cweight', '外箱毛重', 'Trọng lượng thùng', '整箱放秤上，拍到秤读数'),
+    g2('open', '开箱：箱内装箱状况', 'Mở thùng: cách đóng gói bên trong', '打开后从上往下拍，看清装箱方式和数量', ['A2', 'A3', 'A4']),
+    g2('drop', '摔箱测试', 'Thử thả rơi thùng', '拍摔箱后外箱和箱内产品状况', ['A7']),
+    g3('box1', '彩盒正面', 'Hộp màu mặt trước', '印刷清晰、颜色与样品一致', ['B1', 'B2', 'B3']),
+    g3('box2', '彩盒背面、侧面', 'Hộp màu mặt sau, mặt bên', '文字、图案、条码完整', ['B4']),
+    g3('label', '标签与条码（含扫描结果）', 'Tem nhãn & mã vạch (kèm kết quả quét)', '标签贴在正确位置；扫描结果一起拍', ['B5', 'B6', 'B7', 'B8', 'B9', 'B10', 'B11', 'B12']),
+    g3('warn', '警示标签', 'Tem cảnh báo', '蜡烛安全警示语完整、贴牢'),
+    g4('compare', '大货与样品对比', 'So sánh hàng loạt với mẫu', '样品和大货并排，标明哪个是样品', ['D', 'F2', 'G21', 'G22']),
+    g4('front', '产品正面', 'Sản phẩm mặt trước', '整体外观，看清表面', ['C1', 'C2', 'C3', 'C4', 'G1', 'G2', 'G3', 'G4', 'G5', 'G6', 'G7', 'G8', 'G9', 'G10', 'G11', 'G12', 'G13', 'G14', 'G18', 'G19', 'G20']),
+    g4('side', '产品侧面、底部（底部标签）', 'Mặt bên, mặt đáy (tem đáy)', '底部标签内容可读'),
+    g4('wick', '灯芯俯视', 'Tim đèn nhìn từ trên', '从正上方拍，看灯芯是否居中；放尺子量长度', ['G15', 'G16', 'G17']),
+    g5('msize', '尺寸测量', 'Đo kích thước', '卡尺量杯高、口径，拍到读数', ['E1']),
+    g5('mweight', '称重', 'Cân trọng lượng', '电子秤去皮后称净重，拍到读数', ['E2']),
+    g5('burn1', '燃烧测试：点燃后', 'Thử đốt: sau khi châm lửa', '点燃后正常燃烧的样子', ['F1']),
+    g5('burn2', '燃烧测试：燃烧 1 小时后', 'Thử đốt: sau 1 giờ', '火焰高度、蜡池大小，有无黑烟', ['F1']),
+  ];
+};
 
 const TPL_IQC_GLASS = {
   id: 'TPL-IQC-001', docNo: 'SL/QR-35', name: '进料检验报告（玻璃杯-透明）', nameVi: 'Báo cáo kiểm tra nguyên liệu đầu vào', type: 'IQC',
@@ -489,6 +517,17 @@ function photoRule(f) { return { all: f.itemPhoto === 'all' }; }
 /** 判 NG 必须有一张「不良部位」照片：当场新拍、标记为不良，引用的照片不算 */
 const isDefectPhoto = p => p && p.defect && !p.ref;
 function defectPhotoMissing(it, v) { return itemResult(it, v) === 'NG' && !(v.photos || []).some(isDefectPhoto); }
+/** 清单照片自动引用到它能证明的检验项（标记为「引用」，不算不良照片） */
+function linkCoverPhotos(f) {
+  const pk = p => p.src || (p.ph + '|' + p.hue);
+  (f.basePhotoDefs || []).forEach(d => (d.covers || []).forEach(code => {
+    const it = f.items.find(x => x.code === code); if (!it) return;
+    const v = f.values[it.id];
+    (f.basePhotos[d.key] || []).forEach(p => {
+      if (!v.photos.some(x => pk(x) === pk(p))) v.photos.push({ ...p, id: uid(), ref: true, from: d.name });
+    });
+  }));
+}
 /** 本单所有照片（供「选本单已拍」引用） */
 function allPhotos(f) {
   const out = [];
@@ -668,7 +707,8 @@ function fillDemoValues(f, bad) {
   // 单芯产品 D2 选 NA，双芯产品 D1 选 NA
   const p = MASTER.products.find(x => x.code === f.header.product);
   if (f.type === 'FQC' && p) { const na = p.wick > 1 ? 'fD1' : 'fD2'; if (f.values[na]) f.values[na].judge = 'NA'; }
-  // 每项照片（合格也拍）；同一组的外箱/包装类项目共用一张照片，演示「选本单已拍」
+  linkCoverPhotos(f);
+  // 每项照片（合格也拍）；清单照片没覆盖到的项目单独拍
   const rule = photoRule(f); const shared = {};
   f.items.forEach(it => {
     const v = f.values[it.id];
@@ -774,7 +814,7 @@ function demoAnomalyStatus(forms) {
 }
 
 /* ---------- 全局 store（本地持久化） ---------- */
-const STORE_KEY = 'qc-proto-v7';
+const STORE_KEY = 'qc-proto-v8';
 function freshState() {
   _seed = 20261123;
   const templates = clone(DEFAULT_TEMPLATES);

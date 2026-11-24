@@ -172,6 +172,7 @@ Pages.Form = {
   data() { return { f: null, isNew: false, reviewComment: '', reviewResult: '', errs: [], showErrs: false }; },
   created() { this.load(); },
   watch: {
+    baseSig() { if (this.f && this.editable) linkCoverPhotos(this.f); },
     /* 发现异常立即上报：自动保存单据、登记异常、通知 QC 主管，不等提交 */
     anomalyKeys(nv) {
       if (!this.f || !this.editable) return;
@@ -215,6 +216,16 @@ Pages.Form = {
     materials() { return this.f.header.supplier ? MASTER.materials.filter(m => m.supplier === this.f.header.supplier) : MASTER.materials; },
     verdict() { return this.f.result || this.summary.suggest; },
     pool() { return allPhotos(this.f); },
+    baseGroups() {
+      const out = [];
+      (this.f.basePhotoDefs || []).forEach((d, i) => {
+        let g = out[out.length - 1];
+        if (!g || g.name !== (d.group || '')) { g = { name: d.group || '', vi: d.groupVi || '', defs: [] }; out.push(g); }
+        g.defs.push({ ...d, no: i + 1 });
+      });
+      return out;
+    },
+    baseSig() { return this.f ? JSON.stringify(Object.values(this.f.basePhotos || {}).map(a => a.length)) : ''; },
     photoProgress() { // 还缺照片的项目数
       const rule = photoRule(this.f);
       const lack = this.f.items.filter(it => { const v = this.f.values[it.id]; return (v.photos || []).length < photoNeed(it, v, rule) || defectPhotoMissing(it, v); }).length
@@ -379,13 +390,18 @@ Pages.Form = {
         <!-- 基础信息照片：每张单据必拍，合格也要拍 -->
         <el-card v-if="f.basePhotoDefs && f.basePhotoDefs.length" shadow="never" class="panel">
           <template #header><div class="panel-h"><Bi zh="基础信息照片" vi="Hình ảnh thông tin cơ bản" inline />
-            <span class="muted small">合格也要拍，报告里会附上</span></div></template>
-          <div class="base-photos">
-            <div v-for="d in f.basePhotoDefs" :key="d.key" class="bp-slot" :class="{lack: (f.basePhotos[d.key]||[]).length < d.min}">
-              <div class="bp-name"><Bi :zh="d.name" :vi="d.vi" /><small class="muted">至少 {{ d.min }} 张</small></div>
-              <PhotoCell :photos="f.basePhotos[d.key]" :item-name="d.name" :form-no="f.no" :inspector="f.inspector" :readonly="!editable" :min="d.min" :pool="pool" />
+            <span class="muted small">合格也要拍；拍完自动用到对应的检验项，不用重复拍</span></div></template>
+          <template v-for="g in baseGroups" :key="g.name">
+            <div v-if="g.name" class="bp-group"><Bi :zh="g.name" :vi="g.vi" inline /></div>
+            <div class="base-photos">
+              <div v-for="d in g.defs" :key="d.key" class="bp-slot" :class="{lack: (f.basePhotos[d.key]||[]).length < d.min}">
+                <div class="bp-name"><Bi :zh="d.no + '. ' + d.name" :vi="d.vi" /><small class="muted">至少 {{ d.min }} 张</small></div>
+                <div v-if="d.hint" class="bp-hint">{{ d.hint }}</div>
+                <PhotoCell :photos="f.basePhotos[d.key]" :item-name="d.name" :form-no="f.no" :inspector="f.inspector" :readonly="!editable" :min="d.min" :pool="pool" />
+                <div v-if="d.covers && d.covers.length" class="bp-covers">自动用于：{{ d.covers.join('、') }}</div>
+              </div>
             </div>
-          </div>
+          </template>
         </el-card>
 
         <!-- 进料 / 成品：检验项目 -->

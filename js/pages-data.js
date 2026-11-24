@@ -119,7 +119,12 @@ Pages.Report = {
       return out;
     },
     slots() { return Array.from({ length: Math.max(6, this.f.rounds.length) }, (_, k) => this.f.rounds[k] || null); },
-    baseGroups() { return (this.f.basePhotoDefs || []).map(d => ({ name: d.name, vi: d.vi, photos: this.f.basePhotos[d.key] || [] })); },
+    baseGroups() { return (this.f.basePhotoDefs || []).map((d, i) => ({ no: i + 1, name: d.name, vi: d.vi, group: d.group || '', groupVi: d.groupVi || '', photos: this.f.basePhotos[d.key] || [] })); },
+    baseSections() {
+      const out = [];
+      this.baseGroups.forEach(g => { let s = out[out.length - 1]; if (!s || s.name !== g.group) { s = { name: g.group, vi: g.groupVi, items: [] }; out.push(s); } s.items.push(g); });
+      return out;
+    },
     roundGroups() { return (this.f.rounds || []).map((r, k) => ({ name: `第 ${k + 1} 轮 ${r.time}`, photos: r.photos || [] })).filter(g => g.photos.length); },
     defectPhotos() { const out = []; this.f.items.forEach(i => (this.f.values[i.id].photos || []).filter(p => p.defect).forEach(p => out.push({ name: itemLabel(i), p }))); return out; },
     allSrc() { return allPhotos(this.f).map(srcOf); },
@@ -251,15 +256,18 @@ Pages.Report = {
       </table>
 
       <h3>{{ f.type==='FQC' ? '图片' : '基础信息照片' }}<small>{{ f.type==='FQC' ? 'Hình ảnh' : 'Hình ảnh thông tin cơ bản' }}</small></h3>
-      <div class="pg-list base">
-        <template v-for="g in baseGroups" :key="g.name">
-          <figure v-for="(p,i) in g.photos" :key="p.id">
-            <img :src="srcOf(p)" />
-            <figcaption><b>{{ g.name }}<template v-if="g.photos.length>1"> {{ i+1 }}</template></b> {{ g.vi }}<br>{{ p.time }} · {{ p.by }}</figcaption>
-          </figure>
-          <figure v-if="!g.photos.length"><div class="no-photo">未拍</div><figcaption><b>{{ g.name }}</b> {{ g.vi }}</figcaption></figure>
-        </template>
-      </div>
+      <template v-for="sec in baseSections" :key="sec.name">
+        <div v-if="sec.name" class="pg-sec">{{ sec.name }} <small>{{ sec.vi }}</small></div>
+        <div class="pg-list base">
+          <template v-for="g in sec.items" :key="g.name">
+            <figure v-for="(p,i) in g.photos" :key="p.id">
+              <img :src="srcOf(p)" />
+              <figcaption><b>{{ g.no }}. {{ g.name }}<template v-if="g.photos.length>1"> ({{ i+1 }})</template></b> {{ g.vi }}<br>{{ p.time }} · {{ p.by }}</figcaption>
+            </figure>
+            <figure v-if="!g.photos.length"><div class="no-photo">未拍</div><figcaption><b>{{ g.no }}. {{ g.name }}</b> {{ g.vi }}</figcaption></figure>
+          </template>
+        </div>
+      </template>
       <template v-if="roundGroups.length">
         <h3>每轮巡检现场照片<small>Hình ảnh mỗi lần tuần kiểm</small></h3>
         <div class="pg-list"><figure v-for="g in roundGroups" :key="g.name"><img :src="srcOf(g.photos[0])" /><figcaption><b>{{ g.name }}</b> · {{ g.photos[0].by }}</figcaption></figure></div>
