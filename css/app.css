@@ -403,6 +403,7 @@ body {
   /* 模板里实际渲染的是 figure，原来的 .photo-group 是死类名 */
   figure, tr { break-inside: avoid; }
 }
+.size-warn { margin-top: 4px; font-size: 12px; line-height: 1.45; color: #c0392b; }
 .hint-ng { font-size: 12px; color: var(--amber); background: #fdf6ea; border-radius: 6px; padding: 6px 8px; margin: 6px 0 2px; }
 .sample-table input::-webkit-outer-spin-button, .sample-table input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .sample-table input[type=number] { -moz-appearance: textfield; appearance: textfield; }

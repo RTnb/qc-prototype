@@ -231,6 +231,25 @@ Pages.Form = {
     },
     verdict() { return this.f.result || this.summary.suggest; },
     pool() { return allPhotos(this.f); },
+    /* 表头「尺寸」与表内实测标准值不一致时当场提示（不阻止保存，只报警） */
+    sizeWarn() {
+      const f = this.f; if (!f) return '';
+      const txt = String(f.header.size || '').trim();
+      const it = f.items.find(i => i.code === 'C1') || f.items.find(i => i.code === 'E1');
+      const std = {};
+      (it && it.dims ? it.dims : []).forEach(d => { if (d.key) std[d.key] = d.std; });
+      const hasStd = filled(std.height) || filled(std.mouth) || filled(std.wall);
+      if (!txt) return '';
+      const p = parseSizeText(txt);
+      if (!Object.keys(p).length) {
+        return hasStd ? '这句认不出尺寸格式（应写 Φ口径×高，如 Φ78×85mm），下面的标准值不会跟着它走' : '';
+      }
+      const diff = [];
+      if (filled(std.mouth) && p.mouth !== undefined && Number(std.mouth) !== p.mouth) diff.push('口径 ' + std.mouth);
+      if (filled(std.height) && p.height !== undefined && Number(std.height) !== p.height) diff.push('杯高 ' + std.height);
+      if (filled(std.wall) && p.wall !== undefined && Number(std.wall) !== p.wall) diff.push('壁厚 ' + std.wall);
+      return diff.length ? `与下面实测标准值不一致（标准 ${diff.join(' / ')}），请核对` : '';
+    },
     baseGroups() {
       const out = [];
       (this.f.basePhotoDefs || []).forEach((d, i) => {
@@ -322,6 +341,7 @@ Pages.Form = {
       recalcPlan(this.f);
     },
     /* 表头「尺寸」手改后回填标准值 */
+
     onSizeText() {
       const p = parseSizeText(this.f.header.size);
       if (!Object.keys(p).length) return;
@@ -446,7 +466,7 @@ Pages.Form = {
                 <el-select v-model="f.header.material" filterable placeholder="选择玻璃杯（自动带出尺寸、模版和标准）" @change="onMaterial"><el-option v-for="m in materials" :key="m.code" :label="m.name" :value="m.code" /></el-select></el-form-item>
               <el-form-item required><template #label><Bi zh="供应商" vi="Nhà cung cấp" inline /></template>
                 <el-select v-model="f.header.supplier" filterable placeholder="选择供应商" @change="onSupplier"><el-option v-for="s in MASTER.suppliers" :key="s.code" :label="s.name" :value="s.code" /></el-select></el-form-item>
-              <el-form-item><template #label><Bi zh="尺寸" vi="Kích thước" inline /></template><el-input v-model="f.header.size" placeholder="如 Φ78×85mm" @change="onSizeText" /></el-form-item>
+              <el-form-item><template #label><Bi zh="尺寸" vi="Kích thước" inline /></template><el-input v-model="f.header.size" placeholder="如 Φ78×85mm" @change="onSizeText" /><div v-if="sizeWarn" class="size-warn">⚠ {{ sizeWarn }}</div></el-form-item>
               <el-form-item required><template #label><Bi zh="来料数量（批量）" vi="Số lượng nhập (lô)" inline /></template><el-input-number v-model="f.header.qty" :min="0" :controls="false" @change="recalc" style="width:100%" /></el-form-item>
               <el-form-item><template #label><Bi zh="到货日期" vi="Ngày nhập hàng" inline /></template><el-date-picker v-model="f.header.receiveDate" value-format="YYYY-MM-DD" style="width:100%" /></el-form-item>
               <el-form-item><template #label><Bi zh="检验日期" vi="Ngày kiểm tra" inline /></template><el-input :model-value="f.date" disabled /></el-form-item>
@@ -473,7 +493,7 @@ Pages.Form = {
               <el-form-item required><template #label><Bi zh="订单号" vi="Số đơn hàng" inline /></template><el-input v-model="f.header.order" /></el-form-item>
               <el-form-item required><template #label><Bi zh="货号" vi="Mã hàng" inline /></template>
                 <el-select v-model="f.header.product" @change="onProduct" placeholder="选择货号（自动带出尺寸和标准）"><el-option v-for="p in MASTER.products" :key="p.code" :label="p.itemNo+' '+p.name" :value="p.code" /></el-select></el-form-item>
-              <el-form-item><template #label><Bi zh="尺寸" vi="Kích thước" inline /></template><el-input v-model="f.header.size" @change="onSizeText" /></el-form-item>
+              <el-form-item><template #label><Bi zh="尺寸" vi="Kích thước" inline /></template><el-input v-model="f.header.size" placeholder="如 Φ78×85mm" @change="onSizeText" /><div v-if="sizeWarn" class="size-warn">⚠ {{ sizeWarn }}</div></el-form-item>
               <el-form-item><template #label><Bi zh="订单数量" vi="Số lượng đơn hàng" inline /></template><el-input-number v-model="f.header.orderQty" :min="0" :controls="false" style="width:100%" /></el-form-item>
               <el-form-item required><template #label><Bi zh="验货数量" vi="Số lượng kiểm hàng" inline /></template><el-input-number v-model="f.header.qty" :min="0" :controls="false" @change="recalc" style="width:100%" /></el-form-item>
               <el-form-item><template #label><Bi zh="检验日期" vi="Ngày kiểm tra" inline /></template><el-input :model-value="f.date" disabled /></el-form-item>
