@@ -1129,7 +1129,33 @@ function migrateLoadedState(o) {
   const tpl = (o.templates || []).find(x => x.id === 'TPL-FQC-001');
   const draft = o.tplDrafts && o.tplDrafts['TPL-FQC-001'];
   const a = fixAql(tpl), b = fixAql(draft);   // 两个都要跑：不能用 || 短路，否则草稿被跳过
-  if (a || b) {
+  /* 尺寸维度升级：口径×高 → 长×宽×高（客户 2026-11-25 反馈：还有方形/椭圆杯）。
+     只改「结构还是旧默认」的模版；用户自己加过维度的不动。版本取 max(现有, 3)。 */
+  const NEW_C1 = [
+    { name: '长 mm', key: 'length' }, { name: '宽 mm', key: 'width' },
+    { name: '高 mm', key: 'height' }, { name: '壁厚 mm', key: 'wall' },
+  ];
+  const NEW_E1 = [
+    { name: '长 mm', key: 'length', pct: 5, std: 85 }, { name: '宽 mm', key: 'width', pct: 5, std: 78 },
+    { name: '高 mm', key: 'height', pct: 5, std: 85 },
+  ];
+  const upgradeDims = (t, code, next) => {
+    if (!t || !Array.isArray(t.items)) return false;
+    const it = t.items.find(i => i.code === code);
+    if (!it || !Array.isArray(it.dims)) return false;
+    const keys = it.dims.map(d => d.key).join(',');
+    if (keys !== 'height,mouth,wall' && keys !== 'height,mouth') return false;   // 已经是新结构 / 用户改过 → 跳过
+    it.dims = next.map(d => Object.assign({}, d));
+    t.version = Math.max(t.version || 0, 3);
+    t.updatedAt = ymd(new Date());
+    return true;
+  };
+  const iqc = (o.templates || []).find(x => x.id === 'TPL-IQC-001');
+  const fqc = (o.templates || []).find(x => x.id === 'TPL-FQC-001');
+  const d1 = o.tplDrafts && o.tplDrafts['TPL-IQC-001'], d2 = o.tplDrafts && o.tplDrafts['TPL-FQC-001'];
+  const dimChanged = [upgradeDims(iqc, 'C1', NEW_C1), upgradeDims(d1, 'C1', NEW_C1),
+                      upgradeDims(fqc, 'E1', NEW_E1), upgradeDims(d2, 'E1', NEW_E1)].some(Boolean);
+  if (a || b || dimChanged) {
     o.logs = o.logs || [];
     o.logs.unshift({ time: nowStr(), user: '系统', action: '模版迁移', target: 'TPL-FQC-001', detail: 'AQL MIN 4.0 → 2.5（吉确认 0/2.5/2.5）；历史单据仍保留建单时的 AQL' });
   }
