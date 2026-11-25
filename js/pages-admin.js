@@ -132,7 +132,12 @@ Pages.Templates = {
   data() { return { type: '' }; },
   computed: { rows() { return store.templates.filter(t => !this.type || t.type === this.type); } },
   methods: {
-    bindText(t) { return [...t.bind.materials.map(m => materialName(m)), ...t.bind.processes].join('、') || (t.isDefault ? '默认模版' : '未绑定'); },
+    bindText(t) {
+      const names = t.bind.materials
+        .filter(code => { const m = MASTER.materials.find(x => x.code === code); return m && !m.hidden; })   // 隐藏物料不展示
+        .map(materialName);
+      return [...names, ...t.bind.processes].join('、') || (t.isDefault ? '默认模版' : '未绑定');
+    },
     create() {
       const type = this.type || 'IQC';
       const id = `TPL-${type}-${String(store.templates.filter(t => t.type === type).length + 1).padStart(3, '0')}`;

@@ -163,7 +163,7 @@ const MASTER = {
   materials: [
     /* 来料的玻璃只留一条：磨砂/喷涂/花纸都算后加工，在「后加工类型」里选，不再拆成两种物料 */
     { code: 'M-GL-01', name: '玻璃杯', vi: 'Ly thủy tinh', spec: 'GL-8OZ 直身杯 Φ78×85', unit: 'PCS', supplier: 'S001', dims: { height: 85, mouth: 78, wall: 3.0, weight: 230 } },
-    { code: 'M-GL-02', name: '玻璃杯（磨砂·旧）', vi: 'Ly thủy tinh (mờ)', spec: 'GL-12OZ 直身杯 Φ90×100', unit: 'PCS', supplier: 'S002', hidden: true, dims: { height: 100, mouth: 90, wall: 3.5, weight: 320 } },
+    { code: 'M-GL-02', name: '玻璃杯（磨砂）', vi: 'Ly thủy tinh (mờ)', spec: 'GL-12OZ 直身杯 Φ90×100', unit: 'PCS', supplier: 'S002', hidden: true, dims: { height: 100, mouth: 90, wall: 3.5, weight: 320 } },
     { code: 'M-WX-01', name: '大豆蜡', vi: 'Sáp đậu nành', spec: '464 片状 20kg/箱', unit: 'KG', supplier: 'S003', dims: { size: 5, weight: 20000 } },
     { code: 'M-WK-01', name: '棉芯灯芯', vi: 'Tim đèn cotton', spec: 'CD-10 带底座 150mm', unit: 'PCS', supplier: 'S004', dims: { size: 150, weight: 0.8 } },
     { code: 'M-PK-01', name: '彩盒', vi: 'Hộp màu', spec: '8oz 四色印刷', unit: 'PCS', supplier: 'S005', dims: { size: 120, weight: 45 } },
@@ -863,7 +863,7 @@ function buildDemo(templates) {
       const f = mk(type, day), h = f.header;
       let bad = false;
       if (type === 'IQC') {
-        const m = pick(MASTER.materials);
+        const m = pick(MASTER.materials.filter(x => !x.hidden));
         Object.assign(h, { material: m.code, supplier: m.supplier, spec: m.spec, qty: pick([500, 1000, 1200, 2400, 3000, 5000]), receiveDate: ymd(day), order: `PO-${ymdCompact(day).slice(2)}${pad(k + 1)}`, lot: `L${ymdCompact(day).slice(2)}${pad(k + 1)}` });
         h.size = m.dims && m.dims.mouth ? `Φ${m.dims.mouth}×${m.dims.height}mm` : ''; h.visit = rnd() < 0.12 ? '复验' : '首次';
         bad = rnd() < ({ S005: 0.35, S002: 0.2 }[m.supplier] || 0.06);
@@ -1065,10 +1065,37 @@ function freshState() {
   const demo = buildDemo(templates);
   return { templates, ...demo, anomalyStatus: demoAnomalyStatus(demo.forms), tplDrafts: {} };
 }
+/* 一次性迁移（在 loadState 里对原始对象做，不碰 reactive、不触发保存、不弹配额提示）：
+   成品模版 AQL 的 MIN 4.0 → 2.5（吉 2026-11-25 确认 0 / 2.5 / 2.5）。
+   只改「还是默认值、没人动过」的那份；已发布版本和它的草稿都要改，否则发布草稿会把 4.0 带回来。
+   已建单据的 AQL 是建单时的快照，这里改模版不影响历史报告。 */
+function migrateLoadedState(o) {
+  const fixAql = tpl => {
+    if (!tpl || !tpl.plan || !tpl.plan.aql) return false;
+    const a = tpl.plan.aql;
+    if (a.MIN === 4.0 && a.MAJ === 2.5 && a.CR === 0 && (tpl.version || 0) <= 2) {
+      a.MIN = 2.5; tpl.version = (tpl.version || 0) + 1; tpl.updatedAt = ymd(new Date());
+      return true;
+    }
+    return false;
+  };
+  const tpl = (o.templates || []).find(x => x.id === 'TPL-FQC-001');
+  const draft = o.tplDrafts && o.tplDrafts['TPL-FQC-001'];
+  const a = fixAql(tpl), b = fixAql(draft);   // 两个都要跑：不能用 || 短路，否则草稿被跳过
+  if (a || b) {
+    o.logs = o.logs || [];
+    o.logs.unshift({ time: nowStr(), user: '系统', action: '模版迁移', target: 'TPL-FQC-001', detail: 'AQL MIN 4.0 → 2.5（吉确认 0/2.5/2.5）；历史单据仍保留建单时的 AQL' });
+  }
+  return o;
+}
 function loadState() {
   try {
     const raw = localStorage.getItem(STORE_KEY);
-    if (raw) { const o = JSON.parse(raw) || {}; o.tplDrafts = o.tplDrafts || {}; return o; }   // 旧存档没有 tplDrafts 时给空对象，别让它变 null
+    if (raw) {
+      const o = JSON.parse(raw) || {};
+      o.tplDrafts = o.tplDrafts || {};   // 旧存档没有 tplDrafts 时给空对象，别让它变 null
+      return migrateLoadedState(o);
+    }
   } catch (e) { /* 读不到就用演示数据 */ }
   return freshState();
 }
@@ -1108,22 +1135,7 @@ watch(() => [store.forms, store.templates, store.ncrs, store.logs, store.anomaly
 /* 首次打开先落一次盘：否则「系统管理 → 本机已用」会显示 0 KB，配额提示也失真 */
 try { if (!localStorage.getItem(STORE_KEY)) persistNow(); } catch (e) { }
 
-/* 一次性迁移：成品模版 AQL 的 MIN 4.0 → 2.5（吉 2026-11-25 确认 0 / 2.5 / 2.5）。
-   只改「还是默认值、没人动过」的那份；已经人工改过的不碰。
-   注意：已建单据的 AQL 是建单时克隆的快照，这里改模版不会影响历史报告。 */
-function migrateFqcAql() {
-  const t = store.templates.find(x => x.id === 'TPL-FQC-001');
-  if (!t || !t.plan || !t.plan.aql) return false;
-  const a = t.plan.aql;
-  if (a.MIN === 4.0 && a.MAJ === 2.5 && a.CR === 0 && (t.version || 0) <= 2) {
-    a.MIN = 2.5; t.version = (t.version || 0) + 1; t.updatedAt = ymd(new Date());
-    addLog('模版迁移', t.id, 'AQL MIN 4.0 → 2.5（吉确认 0/2.5/2.5）；历史单据仍保留建单时的 AQL');
-    persistNow();
-    return true;
-  }
-  return false;
-}
-try { migrateFqcAql(); } catch (e) { }
+
 
 /** 当前占用（KB），给系统管理显示 */
 function storageUsageKB() {
