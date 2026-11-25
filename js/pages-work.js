@@ -245,8 +245,9 @@ Pages.Form = {
         return hasStd ? '这句认不出尺寸格式（应写 Φ口径×高，如 Φ78×85mm），下面的标准值不会跟着它走' : '';
       }
       const diff = [];
-      if (filled(std.mouth) && p.mouth !== undefined && Number(std.mouth) !== p.mouth) diff.push('口径 ' + std.mouth);
-      if (filled(std.height) && p.height !== undefined && Number(std.height) !== p.height) diff.push('杯高 ' + std.height);
+      if (filled(std.length) && p.length !== undefined && Number(std.length) !== p.length) diff.push('长 ' + std.length);
+      if (filled(std.width) && p.width !== undefined && Number(std.width) !== p.width) diff.push('宽 ' + std.width);
+      if (filled(std.height) && p.height !== undefined && Number(std.height) !== p.height) diff.push('高 ' + std.height);
       if (filled(std.wall) && p.wall !== undefined && Number(std.wall) !== p.wall) diff.push('壁厚 ' + std.wall);
       return diff.length ? `与下面实测标准值不一致（标准 ${diff.join(' / ')}），请核对` : '';
     },

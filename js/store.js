@@ -162,16 +162,16 @@ const MASTER = {
   ],
   materials: [
     /* 来料的玻璃只留一条：磨砂/喷涂/花纸都算后加工，在「后加工类型」里选，不再拆成两种物料 */
-    { code: 'M-GL-01', name: '玻璃杯', vi: 'Ly thủy tinh', spec: 'GL-8OZ 直身杯 Φ78×85', unit: 'PCS', supplier: 'S001', dims: { height: 85, mouth: 78, wall: 3.0, weight: 230 } },
-    { code: 'M-GL-02', name: '玻璃杯（磨砂）', vi: 'Ly thủy tinh (mờ)', spec: 'GL-12OZ 直身杯 Φ90×100', unit: 'PCS', supplier: 'S002', hidden: true, dims: { height: 100, mouth: 90, wall: 3.5, weight: 320 } },
+    { code: 'M-GL-01', name: '玻璃杯', vi: 'Ly thủy tinh', spec: 'GL-8OZ 直身杯 Φ78×85', unit: 'PCS', supplier: 'S001', dims: { length: 78, width: 78, height: 85, mouth: 78, wall: 3.0, weight: 230 } },
+    { code: 'M-GL-02', name: '玻璃杯（磨砂）', vi: 'Ly thủy tinh (mờ)', spec: 'GL-12OZ 直身杯 Φ90×100', unit: 'PCS', supplier: 'S002', hidden: true, dims: { length: 90, width: 90, height: 100, mouth: 90, wall: 3.5, weight: 320 } },
     { code: 'M-WX-01', name: '大豆蜡', vi: 'Sáp đậu nành', spec: '464 片状 20kg/箱', unit: 'KG', supplier: 'S003', dims: { size: 5, weight: 20000 } },
     { code: 'M-WK-01', name: '棉芯灯芯', vi: 'Tim đèn cotton', spec: 'CD-10 带底座 150mm', unit: 'PCS', supplier: 'S004', dims: { size: 150, weight: 0.8 } },
     { code: 'M-PK-01', name: '彩盒', vi: 'Hộp màu', spec: '8oz 四色印刷', unit: 'PCS', supplier: 'S005', dims: { size: 120, weight: 45 } },
     { code: 'M-PK-02', name: '外箱', vi: 'Thùng carton', spec: '五层瓦楞 12 入', unit: 'PCS', supplier: 'S005', dims: { size: 400, weight: 650 } },
   ],
   products: [
-    { code: 'P-01', itemNo: 'SC-8-LV', name: '香薰杯蜡 8oz（透明杯·薰衣草）', spec: 'SC-8-LV 单芯 净重 200g', customer: 'C01', wick: 1, dims: { height: 85, mouth: 78, liquid: 70, net: 200, volume: 237 } },
-    { code: 'P-02', itemNo: 'SC-12-VN', name: '香薰杯蜡 12oz（磨砂杯·香草）', spec: 'SC-12-VN 双芯 净重 320g', customer: 'C02', wick: 2, dims: { height: 100, mouth: 90, liquid: 82, net: 320, volume: 355 } },
+    { code: 'P-01', itemNo: 'SC-8-LV', name: '香薰杯蜡 8oz（透明杯·薰衣草）', spec: 'SC-8-LV 单芯 净重 200g', customer: 'C01', wick: 1, dims: { length: 78, width: 78, height: 85, mouth: 78, liquid: 70, net: 200, volume: 237 } },
+    { code: 'P-02', itemNo: 'SC-12-VN', name: '香薰杯蜡 12oz（磨砂杯·香草）', spec: 'SC-12-VN 双芯 净重 320g', customer: 'C02', wick: 2, dims: { length: 90, width: 90, height: 100, mouth: 90, liquid: 82, net: 320, volume: 355 } },
   ],
   customers: [
     { code: 'C01', name: '客户 A', portal: true },
@@ -289,9 +289,9 @@ function iqcNewItems() {
     j('A5', 'S1', A, 'MAJ', '运输破损', 'Hư hỏng vận chuyển', '无因包装不良或运输导致的产品破损', 'Không có sản phẩm hư do bao bì kém hoặc vận chuyển'),
     other('A6', 'S1', A),
     /* 第一部分：S-1 —— C 尺寸 / 重量 / 容量（实测，样本数随 S-1 抽样数） */
-    tbl('C1', '尺寸', 'Kích thước', [{ name: '杯高 mm', key: 'height' }, { name: '口径 mm', key: 'mouth' }, { name: '壁厚 mm', key: 'wall' }]),
+    tbl('C1', '尺寸', 'Kích thước', [{ name: '长 mm', key: 'length' }, { name: '宽 mm', key: 'width' }, { name: '高 mm', key: 'height' }, { name: '壁厚 mm', key: 'wall' }]),
     tbl('C2', '重量', 'Trọng lượng', [{ name: '重量 g', key: 'weight' }]),
-    tbl('C3', '容量', 'Dung tích', [{ name: '容量 ml', key: '' }]),
+    Object.assign(tbl('C3', '容量', 'Dung tích', [{ name: '容量 ml', key: '' }]), { required: false }),   // 客户：容量不是必填项
     /* 第二部分：Level I —— B 外观（杯体） */
     j('B1', 'L1', B, 'CR', '裂纹', 'Nứt', '不允许', 'Không cho phép'),
     j('B2', 'L1', B, 'CR', '缺口 / 崩边', 'Sứt mép / vỡ cạnh', '不允许', 'Không cho phép'),
@@ -342,7 +342,7 @@ function iqcNewItems() {
 const TPL_IQC_GLASS = {
   id: 'TPL-IQC-001', docNo: 'SL/QR-35', name: '来料检验报告（玻璃杯·中越新版）', nameVi: 'Báo cáo kiểm tra nguyên liệu (Ly thủy tinh)',
   reportTitle: '玻璃杯来料检验报告', reportTitleVi: 'Báo Cáo Kiểm Tra Nguyên Liệu Ly Thủy Tinh',
-  type: 'IQC', version: 2, status: '已发布', updatedAt: '2026-11-25',
+  type: 'IQC', version: 3, status: '已发布', updatedAt: '2026-11-25',
   bind: { materials: ['M-GL-01', 'M-GL-02'], processes: [] }, ngPhoto: true,
   itemPhoto: 'ng', basePhotos: BASE_IQC2(),
   parts: IQC_PARTS, shock: { rows: 3 },
@@ -449,7 +449,7 @@ function fqcItems() {
     j('C3', C, '安全性-容易识别', 'An toàn - dễ nhận biết', '无磕碰', 'Không va đập, sứt mẻ', 'MAJ'),
     j('C4', C, '安全性-容易识别', 'An toàn - dễ nhận biết', '无尖边利角', 'Không có cạnh sắc, góc nhọn', 'MAJ'),
     j('D', D, '材质', 'Chất liệu', '与订单要求和样品要求一致', 'Đúng yêu cầu đơn hàng và mẫu', 'MAJ'),
-    j('E1', E, '尺寸', 'Kích thước', P5, P5vi, 'MAJ', tbl([{ name: '杯高 mm', key: 'height', pct: 5, std: 85 }, { name: '口径 mm', key: 'mouth', pct: 5, std: 78 }])),
+    j('E1', E, '尺寸', 'Kích thước', P5, P5vi, 'MAJ', tbl([{ name: '长 mm', key: 'length', pct: 5, std: 85 }, { name: '宽 mm', key: 'width', pct: 5, std: 78 }, { name: '高 mm', key: 'height', pct: 5, std: 85 }])),
     j('E2', E, '重量', 'Trọng lượng', P5, P5vi, 'MAJ', tbl([{ name: '净重 g', key: 'net', pct: 5, std: 200 }])),
     j('E3', E, '容量', 'Dung tích', P5, P5vi, 'MAJ', tbl([{ name: '容量 ml', key: 'volume', pct: 5, std: 237 }])),
     j('F1', F, '燃烧', 'Đốt cháy', '燃烧合格', 'Đốt cháy đạt', 'CR'),
@@ -481,7 +481,7 @@ function fqcItems() {
 }
 const TPL_FQC = {
   id: 'TPL-FQC-001', docNo: 'SL/QR-38', name: '成品检验报告', nameVi: 'Báo cáo kiểm nghiệm thành phẩm', type: 'FQC',
-  version: 2, status: '已发布', updatedAt: '2026-11-24', bind: { materials: [], processes: [] }, isDefault: true, ngPhoto: true,
+  version: 3, status: '已发布', updatedAt: '2026-11-25', bind: { materials: [], processes: [] }, isDefault: true, ngPhoto: true,
   plan: { method: 'MIL-STD-105E I', aql: { CR: 0, MAJ: 2.5, MIN: 2.5 } },
   itemPhoto: 'all', basePhotos: BASE_FQC(),
   note: 'E1 尺寸、E2 重量、E3 容量实测 5PCS，无特殊要求按 ±5%。AQL 按 CR 0 / MAJ 2.5 / MIN 2.5（2026-11-25 吉确认），可在模版中修改。等级写「MAJ/MIN」的项由检验员按实际情况选择。',
@@ -497,7 +497,12 @@ function materialName(code) { return (materialOf(code) || {}).name || ''; }
 function customerName(code) { return (MASTER.customers.find(s => s.code === code) || {}).name || ''; }
 function defectName(code) { const d = MASTER.defects.find(x => x.code === code); return d ? `${d.code} ${d.name}` : ''; }
 function itemLabel(it) { return (it.code ? it.code + ' ' : '') + (it.short || it.name); }
-function sizeText(p) { return p && p.dims && p.dims.mouth ? `Φ${p.dims.mouth}×${p.dims.height}mm` : ''; }
+function sizeText(p) {
+  const d = (p && p.dims) || {};
+  if (d.length && d.width && d.height) return d.length + '×' + d.width + '×' + d.height + 'mm';   // 方杯 / 椭圆杯
+  if (d.mouth && d.height) return 'Φ' + d.mouth + '×' + d.height + 'mm';                          // 圆杯
+  return '';
+}
 
 function newFormSkeleton(type, no, date = new Date()) {
   return {
@@ -570,22 +575,35 @@ function syncSampleRows(f) {
     if (rows.length > n) rows.length = n;
   });
 }
-/** 解析表头尺寸文本 → {mouth, height, wall}。只认「口径×高」：必须带 Φ，或恰好两组数且在杯子常见范围内；
- *  三段（外箱 28.5X19.5X12CM / 0.34X0.23X0.125M）一律不认，避免把纸箱尺寸当成杯子口径 */
+/** 解析表头尺寸文本 → {length,width,height,wall,mouth}。
+ *  支持：Φ78×85（圆杯，长=宽=口径）、78×78×85 / 80×60×90（方杯、椭圆杯）。
+ *  带范围校验：纸箱那种 28.5X19.5X12CM、0.34X0.23X0.125M、400X300X250 一律不认（客户反馈：不只有圆形杯）。 */
 function parseSizeText(text) {
-  const s = String(text || '').trim();
-  if (!s) return {};
-  const hasPhi = /[ΦφØø]/.test(s);
-  const segs = (s.match(/[×xX*]/g) || []).length;
-  if (segs >= 2 && !hasPhi) return {};                      // 三组数字：不是杯子
-  const m = s.match(/(\d+(?:\.\d+)?)\s*[×xX*]\s*(\d+(?:\.\d+)?)/);
-  if (!m) return {};
-  const mouth = Number(m[1]), height = Number(m[2]);
-  if (!Number.isFinite(mouth) || !Number.isFinite(height)) return {};
-  if (!(mouth >= 30 && mouth <= 200 && height >= 30 && height <= 300)) return {};   // 杯子口径/高度范围，外箱那种 0.34 会被挡掉
-  const out = { mouth, height };
-  const w = s.match(/(?:壁厚|厚度)\s*(\d+(?:\.\d+)?)/);
-  if (w) { const wall = Number(w[1]); if (Number.isFinite(wall) && wall > 0 && wall < 50) out.wall = wall; }
+  const t = String(text || '').trim();
+  if (!t) return {};
+  const ok = (v, lo, hi) => Number.isFinite(v) && v >= lo && v <= hi;
+  const wallOf = () => {
+    const w = t.match(/(?:壁厚|厚度)\s*(\d+(?:\.\d+)?)/);
+    if (!w) return null;
+    const v = Number(w[1]);
+    return ok(v, 0.1, 50) ? v : null;
+  };
+  const segs = (t.match(/[×xX*]/g) || []).length;
+  if (segs >= 2) {                                   // 三组：长×宽×高
+    const m = t.match(/(\d+(?:\.\d+)?)\s*[×xX*]\s*(\d+(?:\.\d+)?)\s*[×xX*]\s*(\d+(?:\.\d+)?)/);
+    if (!m) return {};
+    const L = Number(m[1]), W = Number(m[2]), H = Number(m[3]);
+    if (!(ok(L, 20, 300) && ok(W, 20, 300) && ok(H, 20, 400))) return {};
+    const out = { length: L, width: W, height: H };
+    const w = wallOf(); if (w !== null) out.wall = w;
+    return out;
+  }
+  const m2 = t.match(/(\d+(?:\.\d+)?)\s*[×xX*]\s*(\d+(?:\.\d+)?)/);
+  if (!m2) return {};
+  const A = Number(m2[1]), H2 = Number(m2[2]);
+  if (!(ok(A, 20, 300) && ok(H2, 20, 400))) return {};
+  const out = { length: A, width: A, height: H2, mouth: A };   // 圆杯：长=宽=口径
+  const w2 = wallOf(); if (w2 !== null) out.wall = w2;
   return out;
 }
 /** 取消物料 / 产品：清掉自动带出的规格型号、尺寸，以及表内的标准值与上下限（这张单还不知道是哪个规格） */
@@ -594,7 +612,8 @@ function clearSpec(f) {
   const specAuto = MASTER.materials.find(x => x.spec && x.spec === f.header.spec);
   if (specAuto) f.header.spec = '';
   const size = String(f.header.size || '').trim();
-  if (size && MASTER.materials.some(x => x.dims && x.dims.mouth && x.dims.height && `Φ${x.dims.mouth}×${x.dims.height}mm` === size)) f.header.size = '';
+  const autoSize = x => { const d = x.dims || {}; return d.length && d.width && d.height ? d.length + '×' + d.width + '×' + d.height + 'mm' : (d.mouth && d.height ? 'Φ' + d.mouth + '×' + d.height + 'mm' : ''); };
+  if (size && MASTER.materials.some(x => autoSize(x) === size)) f.header.size = '';
   f.items.forEach(it => (it.dims || []).forEach(d => { if (d.key) { d.std = null; d.lo = null; d.hi = null; } }));
 }
 /** 按规格型号带出标准值，按 ±% 算上下限 */
@@ -606,8 +625,10 @@ function resolveSpec(f) {
      没有 φ×高 的物料（彩盒/蜡）只清掉旧的 Φ 格式尺寸，不动用户手写的其它写法 */
   if (m) {
     if (m.spec) f.header.spec = m.spec;
-    if (m.dims && m.dims.mouth && m.dims.height) f.header.size = `Φ${m.dims.mouth}×${m.dims.height}mm`;
-    else if (/^[Φφ]?\s*[\d.]+\s*[×xX*]\s*[\d.]+\s*(mm)?$/i.test(String(f.header.size || '').trim())) f.header.size = '';
+    const md = m.dims || {};
+    if (md.length && md.width && md.height) f.header.size = md.length + '×' + md.width + '×' + md.height + 'mm';
+    else if (md.mouth && md.height) f.header.size = 'Φ' + md.mouth + '×' + md.height + 'mm';
+    else f.header.size = '';   // 这一款没有可用的外形尺寸（彩盒/蜡），不要留着上一款的
   }
   f.items.forEach(it => (it.dims || []).forEach(d => {
     if (!d.key) return;                                    // 「容量」这类没有 key 的维度不自动带出
