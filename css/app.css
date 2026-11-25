@@ -372,7 +372,11 @@ body {
   .item-defect .el-select { flex: 1; }
   .thumb { width: 76px; height: 76px; }
   .form-side .el-button.w100 { display: none; }
-  .form-side .el-divider, .form-side .el-radio-group { display: none; }
+  .form-side .el-divider { display: none; }
+  /* 审核结论的单选组必须保留，否则手机上主管无法选通过/退回 */
+  .form-side .el-radio-group { display: flex; flex-wrap: wrap; gap: 6px; }
+  .thumb-del { width: 28px; height: 28px; font-size: 16px; }
+  .sample-table input { font-size: 16px; height: 40px; }
   .sheet { padding: 18px 14px; }
   .sheet-head { flex-wrap: wrap; gap: 10px; }
   .sheet-title { order: 3; flex-basis: 100%; }
@@ -387,12 +391,17 @@ body {
 }
 
 /* ---------- 打印（报告出 PDF） ---------- */
+/* @page 放在 @media 外，写在里面部分浏览器会忽略；横版单独命名一页 */
+@page { size: A4; margin: 14mm; }
+@page landscapePage { size: A4 landscape; margin: 12mm; }
 @media print {
   .sidebar, .topbar, .no-print, .m-actionbar { display: none !important; }
   body, .content { background: #fff; padding: 0; }
   .sheet { border: 0; box-shadow: none; padding: 0; max-width: none; }
-  .photo-group { break-inside: avoid; }
-  @page { size: A4; margin: 14mm; }
+  /* 巡检表在 JS 里加了 landscape 类，这里给它真正的横版页面，否则会被竖版截断 */
+  .sheet.landscape { page: landscapePage; }
+  /* 模板里实际渲染的是 figure，原来的 .photo-group 是死类名 */
+  figure, tr { break-inside: avoid; }
 }
 .hint-ng { font-size: 12px; color: var(--amber); background: #fdf6ea; border-radius: 6px; padding: 6px 8px; margin: 6px 0 2px; }
 .sample-table input::-webkit-outer-spin-button, .sample-table input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }

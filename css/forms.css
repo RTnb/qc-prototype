@@ -129,7 +129,7 @@
 }
 @media print {
   .sheet.landscape { max-width: none; }
-  @page { size: A4; margin: 12mm; }
+  /* 页边距统一由 app.css 的 @page 定义，这里不要再写一份，否则两处打架 */
 }
 
 /* ============ 三段式来料检验报告（SL/QR-35 中越新版，2026-11-25 纸质表） ============ */

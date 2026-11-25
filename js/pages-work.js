@@ -169,8 +169,14 @@ Pages.Form = {
   props: ['params', 'query'],
   components: { ItemField: Widgets.ItemField, PatrolSheet: Widgets.PatrolSheet },
   setup() { return { store, TYPES, MASTER, ROLES, LEVELS, LEVEL_KEYS, RESULTS, SAMPLING_METHODS, go, supplierName, materialName, customerName }; },
-  data() { return { f: null, isNew: false, reviewComment: '', reviewResult: '', errs: [], showErrs: false }; },
+  data() { return { f: null, isNew: false, reviewComment: '', reviewResult: '', errs: [], showErrs: false, busy: false, touched: false }; },
   created() { this.load(); },
+  mounted() {
+    // 未保存的新单：刷新 / 关标签前拦一下；应用内「返回」在 back() 里单独确认
+    this._onBeforeUnload = e => { if (this.isNew && this.touched) { e.preventDefault(); e.returnValue = ''; return ''; } };
+    window.addEventListener('beforeunload', this._onBeforeUnload);
+  },
+  beforeUnmount() { window.removeEventListener('beforeunload', this._onBeforeUnload); },
   watch: {
     baseSig() { if (this.f && this.editable) linkCoverPhotos(this.f); },
     shockSig() { this.syncShock(); },
@@ -185,7 +191,7 @@ Pages.Form = {
       const h = Math.min(...added.map(a => anomalyHours(a.level)));
       addLog('上报异常', this.f.no, added.map(a => a.item).join('、'));
       ElementPlus.ElNotification({
-        type: 'error', duration: 8000, title: `发现异常，已立即通知 QC 主管 李娜`,
+        type: 'error', duration: 8000, title: `发现异常，已记录在本机，请立即电话通知 QC 主管`,
         message: added.slice(0, 3).map(a => `${a.item}：${a.detail}`).join('；') + `。须在 ${h} 小时内处理，超时自动升级给质量经理。单据已自动保存。`,
       });
     },
@@ -256,17 +262,23 @@ Pages.Form = {
         this.reviewResult = this.f ? this.f.suggest : '';
       }
     },
-    back() { history.length > 1 ? history.back() : go('/inspect/' + this.f.type); },
+    back() {
+      if (this.isNew && this.touched && !window.confirm('这张单还没保存，离开会丢掉已填内容和已拍照片。确定离开？')) return;
+      history.length > 1 ? history.back() : go('/inspect/' + this.f.type);
+    },
+    markTouched() { if (this.isNew) this.touched = true; },
     partInfo(key) { return (this.f.tplParts || []).find(p => p.key === key) || { title: '', titleVi: '', single: false }; },
     recalc() { recalcPlan(this.f); },
     switchTpl(id) { applyTemplate(this.f, store.templates, store.templates.find(t => t.id === id)); recalcPlan(this.f); },
     onSupplier() { if (this.f.header.material && !this.materials.find(m => m.code === this.f.header.material)) this.f.header.material = ''; },
     onMaterial() {
       const m = MASTER.materials.find(x => x.code === this.f.header.material);
-      if (m) { if (!this.f.header.supplier) this.f.header.supplier = m.supplier; this.f.header.spec = m.spec; if (m.dims && m.dims.mouth) this.f.header.size = `Φ${m.dims.mouth}×${m.dims.height}mm`; }
+      if (m) { if (!this.f.header.supplier) this.f.header.supplier = m.supplier; }   // 规格/尺寸统一由 resolveSpec 收口
       const tpl = matchTemplate(this.f, store.templates);
       if (tpl && tpl.id !== this.f.tplId) { applyTemplate(this.f, store.templates, tpl); ElementPlus.ElMessage.info(`已按物料自动切换模版：${tpl.docNo} ${tpl.name}`); }
       else resolveSpec(this.f);
+      // 取消选择物料：清掉自动带出的规格/尺寸和表内标准值（这张单还不知道是哪个杯子）
+      if (!m && !this.f.header.product) clearSpec(this.f);
       recalcPlan(this.f);
     },
     /* 后加工类型：选“无”时，后加工外观 P1–P10 与附着力 D4–D6 自动判不适用；改回有后加工则清掉 NA */
@@ -291,6 +303,29 @@ Pages.Form = {
       const bad = this.f.shock.rows.filter(r => r.ok === 'NG');
       if (bad.length) { v.judge = 'NG'; if (!v.note) v.note = `热冲击 ${bad.length} 只不合格${bad[0].phenomenon ? '：' + bad[0].phenomenon : ''}`; }
       else if (v.judge === 'NG' && (v.note || '').startsWith('热冲击')) { v.judge = ''; v.note = ''; }
+    },
+    /* 把解析出来的口径/杯高/壁厚回填到表内尺寸维度（C1 进料 / E1 成品），并在没有公差时把旧上下限清掉 */
+    applySizeToItems(p) {
+      this.f.items.forEach(it => (it.dims || []).forEach(d => {
+        if (!d.key || p[d.key] === undefined) return;
+        d.std = p[d.key];
+        if (filled(d.pct)) { d.lo = +(d.std * (1 - d.pct / 100)).toFixed(3); d.hi = +(d.std * (1 + d.pct / 100)).toFixed(3); }
+        else { d.lo = null; d.hi = null; }   // 没有公差就别留着上一款的上下限，否则判定会用旧限值
+      }));
+      recalcPlan(this.f);
+    },
+    /* 表头「尺寸」手改后回填标准值 */
+    onSizeText() {
+      const p = parseSizeText(this.f.header.size);
+      if (!Object.keys(p).length) return;
+      this.applySizeToItems(p);
+    },
+    /* 表头「规格型号」手改后：先反推尺寸文本，再回填标准值 */
+    onSpecText() {
+      const p = parseSizeText(this.f.header.spec);
+      if (!Object.keys(p).length) return;
+      if (p.mouth && p.height) this.f.header.size = `Φ${p.mouth}×${p.height}mm`;
+      this.applySizeToItems(p);
     },
     onProduct() {
       const p = MASTER.products.find(x => x.code === this.f.header.product);
@@ -327,30 +362,49 @@ Pages.Form = {
       Object.assign(this.f, { status: 'submitted', submittedAt: nowStr(), result: null });
       computeSummary(this.f);
       addLog('提交', this.f.no, `系统判定 ${RESULTS[this.f.result].zh}`);
-      if (this.f.result === 'NG' && this.f.type === 'IPQC') ElementPlus.ElNotification({ title: '已即时通知 QC 主管', message: `${this.f.no} 巡检发现不良`, type: 'warning' });
+      if (this.f.result === 'NG' && this.f.type === 'IPQC') ElementPlus.ElNotification({ title: '已记录在本机，请通知 QC 主管', message: `${this.f.no} 巡检发现不良`, type: 'warning' });
       ElementPlus.ElMessage.success('已提交，等待审核');
     },
     approve() {
       const f = this.f;
-      Object.assign(f, { result: this.reviewResult || f.suggest, status: 'approved', reviewer: this.me.user, reviewedAt: nowStr(), reviewComment: this.reviewComment });
-      addLog('审核通过', f.no, `检验结果 ${RESULTS[f.result].zh}`);
-      if (f.result !== 'OK' && !f.ncrNo) {
-        const n = { no: `NCR-${ymdCompact(new Date())}-${pad(store.ncrs.length + 1, 3)}`, formNo: f.no, type: f.type, createdAt: ymd(new Date()), desc: (f.result === 'HOLD' ? '待定：' : '') + (f.mainDefect || '检验不合格'), disposition: '', owner: f.type === 'IQC' ? supplierName(f.header.supplier) : (f.header.workshop || '生产部'), action: '', confirmer: '', status: '待处置', closedAt: '' };
-        store.ncrs.unshift(n); f.ncrNo = n.no;
-        ElementPlus.ElNotification({ title: '已自动生成不合格处理单', message: n.no, type: 'warning' });
+      if (!this.canReview || this.busy) return;   // 只有「待审核」的单能审；busy + try/finally 保证不会卡死
+      this.busy = true;
+      try {
+        this.reviewResult = this.reviewResult || f.suggest || 'OK';   // 审核人没选时先固定，避免落库结果为空
+        Object.assign(f, { result: this.reviewResult, status: 'approved', reviewer: this.me.user, reviewedAt: nowStr(), reviewComment: this.reviewComment });
+        addLog('审核通过', f.no, `检验结果 ${RESULTS[f.result].zh}`);
+        if (f.result !== 'OK' && !f.ncrNo) {
+          // NCR 编号取「已有最大流水 + 1」，不再用 ncrs.length+1（删过数据会重号）
+          const seq = store.ncrs.reduce((m, x) => { const mm = /-(\d+)$/.exec(x.no || ''); return mm ? Math.max(m, +mm[1]) : m; }, 0);
+          const n = { no: `NCR-${ymdCompact(new Date())}-${pad(seq + 1, 3)}`, formNo: f.no, type: f.type, createdAt: ymd(new Date()), desc: (f.result === 'HOLD' ? '待定：' : '') + (f.mainDefect || '检验不合格'), disposition: '', owner: f.type === 'IQC' ? supplierName(f.header.supplier) : (f.header.workshop || '生产部'), action: '', confirmer: '', status: '待处置', closedAt: '' };
+          store.ncrs.unshift(n); f.ncrNo = n.no;
+          ElementPlus.ElNotification({ title: '已自动生成不合格处理单', message: n.no, type: 'warning' });
+        }
+        ElementPlus.ElMessage.success('审核通过，已生成报告与台账记录');
+        go('/report/' + f.no);
+      } catch (e) {
+        ElementPlus.ElMessage.error('审核失败：' + (e && e.message ? e.message : '未知错误'));
+      } finally {
+        this.busy = false;
       }
-      ElementPlus.ElMessage.success('审核通过，已生成报告与台账记录');
-      go('/report/' + f.no);
     },
     reject() {
+      if (!this.canReview || this.busy) return;
       if (!this.reviewComment) { ElementPlus.ElMessage.warning('退回请填写审核意见'); return; }
-      Object.assign(this.f, { status: 'returned', reviewer: this.me.user, reviewComment: this.reviewComment, result: null });
-      addLog('退回', this.f.no, this.reviewComment);
-      ElementPlus.ElMessage.success('已退回检验员');
+      this.busy = true;
+      try {
+        Object.assign(this.f, { status: 'returned', reviewer: this.me.user, reviewComment: this.reviewComment, result: null });
+        addLog('退回', this.f.no, this.reviewComment);
+        ElementPlus.ElMessage.success('已退回检验员');
+      } catch (e) {
+        ElementPlus.ElMessage.error('退回失败：' + (e && e.message ? e.message : '未知错误'));
+      } finally {
+        this.busy = false;
+      }
     },
   },
   template: `
-  <div class="page form-page" v-if="f">
+  <div class="page form-page" v-if="f" @input="markTouched" @change="markTouched">
     <div class="page-head">
       <h2><span class="back" @click="back"><el-icon><ArrowLeft /></el-icon></span><TypeTag :type="f.type" /> {{ isNew ? '新建' + t.short + (f.type==='IPQC'?'表':'检验单') : f.no }}</h2>
       <div class="head-actions">
@@ -385,14 +439,14 @@ Pages.Form = {
                 <el-select v-model="f.header.material" filterable placeholder="选择玻璃杯（自动带出尺寸、模版和标准）" @change="onMaterial"><el-option v-for="m in materials" :key="m.code" :label="m.name" :value="m.code" /></el-select></el-form-item>
               <el-form-item required><template #label><Bi zh="供应商" vi="Nhà cung cấp" inline /></template>
                 <el-select v-model="f.header.supplier" filterable placeholder="选择供应商" @change="onSupplier"><el-option v-for="s in MASTER.suppliers" :key="s.code" :label="s.name" :value="s.code" /></el-select></el-form-item>
-              <el-form-item><template #label><Bi zh="尺寸" vi="Kích thước" inline /></template><el-input v-model="f.header.size" placeholder="如 Φ78×85mm" /></el-form-item>
+              <el-form-item><template #label><Bi zh="尺寸" vi="Kích thước" inline /></template><el-input v-model="f.header.size" placeholder="如 Φ78×85mm" @change="onSizeText" /></el-form-item>
               <el-form-item required><template #label><Bi zh="来料数量（批量）" vi="Số lượng nhập (lô)" inline /></template><el-input-number v-model="f.header.qty" :min="0" :controls="false" @change="recalc" style="width:100%" /></el-form-item>
               <el-form-item><template #label><Bi zh="到货日期" vi="Ngày nhập hàng" inline /></template><el-date-picker v-model="f.header.receiveDate" value-format="YYYY-MM-DD" style="width:100%" /></el-form-item>
               <el-form-item><template #label><Bi zh="检验日期" vi="Ngày kiểm tra" inline /></template><el-input :model-value="f.date" disabled /></el-form-item>
               <el-form-item><template #label><Bi zh="检验员" vi="Nhân viên kiểm tra" inline /></template><el-input :model-value="f.inspector" disabled /></el-form-item>
               <el-form-item><template #label><Bi zh="检验状态" vi="Trạng thái kiểm tra" inline /></template>
                 <el-radio-group v-model="f.header.visit"><el-radio-button value="首次">首次</el-radio-button><el-radio-button value="复验">复验</el-radio-button></el-radio-group></el-form-item>
-              <el-form-item><template #label><Bi zh="规格型号" vi="Mã quy cách" inline /></template><el-input v-model="f.header.spec" /></el-form-item>
+              <el-form-item><template #label><Bi zh="规格型号" vi="Mã quy cách" inline /></template><el-input v-model="f.header.spec" @change="onSpecText" /></el-form-item>
               <el-form-item><template #label>批号 <small class="muted">（系统追溯用，选填）</small></template><el-input v-model="f.header.lot" /></el-form-item>
             </template>
             <template v-else-if="f.type==='IPQC'">
@@ -412,7 +466,7 @@ Pages.Form = {
               <el-form-item required><template #label><Bi zh="订单号" vi="Số đơn hàng" inline /></template><el-input v-model="f.header.order" /></el-form-item>
               <el-form-item required><template #label><Bi zh="货号" vi="Mã hàng" inline /></template>
                 <el-select v-model="f.header.product" @change="onProduct" placeholder="选择货号（自动带出尺寸和标准）"><el-option v-for="p in MASTER.products" :key="p.code" :label="p.itemNo+' '+p.name" :value="p.code" /></el-select></el-form-item>
-              <el-form-item><template #label><Bi zh="尺寸" vi="Kích thước" inline /></template><el-input v-model="f.header.size" /></el-form-item>
+              <el-form-item><template #label><Bi zh="尺寸" vi="Kích thước" inline /></template><el-input v-model="f.header.size" @change="onSizeText" /></el-form-item>
               <el-form-item><template #label><Bi zh="订单数量" vi="Số lượng đơn hàng" inline /></template><el-input-number v-model="f.header.orderQty" :min="0" :controls="false" style="width:100%" /></el-form-item>
               <el-form-item required><template #label><Bi zh="验货数量" vi="Số lượng kiểm hàng" inline /></template><el-input-number v-model="f.header.qty" :min="0" :controls="false" @change="recalc" style="width:100%" /></el-form-item>
               <el-form-item><template #label><Bi zh="检验日期" vi="Ngày kiểm tra" inline /></template><el-input :model-value="f.date" disabled /></el-form-item>

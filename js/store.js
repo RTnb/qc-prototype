@@ -119,7 +119,7 @@ function partPlan(lotSize, method, aql, opts = {}) {
 
 /* ---------- 工具 ---------- */
 let _seed = 20261123;
-function rnd() { _seed = (_seed * 1103515245 + 12345) % 2147483648; return _seed / 2147483648; }
+function rnd() { _seed = (Math.imul(_seed, 1103515245) + 12345) % 2147483648; if (_seed < 0) _seed += 2147483648; return _seed / 2147483648; }
 const pick = arr => arr[Math.floor(rnd() * arr.length)];
 const pad = (n, l = 2) => String(n).padStart(l, '0');
 const ymd = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -569,15 +569,53 @@ function syncSampleRows(f) {
     if (rows.length > n) rows.length = n;
   });
 }
+/** 解析表头尺寸文本 → {mouth, height, wall}。只认「口径×高」：必须带 Φ，或恰好两组数且在杯子常见范围内；
+ *  三段（外箱 28.5X19.5X12CM / 0.34X0.23X0.125M）一律不认，避免把纸箱尺寸当成杯子口径 */
+function parseSizeText(text) {
+  const s = String(text || '').trim();
+  if (!s) return {};
+  const hasPhi = /[ΦφØø]/.test(s);
+  const segs = (s.match(/[×xX*]/g) || []).length;
+  if (segs >= 2 && !hasPhi) return {};                      // 三组数字：不是杯子
+  const m = s.match(/(\d+(?:\.\d+)?)\s*[×xX*]\s*(\d+(?:\.\d+)?)/);
+  if (!m) return {};
+  const mouth = Number(m[1]), height = Number(m[2]);
+  if (!Number.isFinite(mouth) || !Number.isFinite(height)) return {};
+  if (!(mouth >= 30 && mouth <= 200 && height >= 30 && height <= 300)) return {};   // 杯子口径/高度范围，外箱那种 0.34 会被挡掉
+  const out = { mouth, height };
+  const w = s.match(/(?:壁厚|厚度)\s*(\d+(?:\.\d+)?)/);
+  if (w) { const wall = Number(w[1]); if (Number.isFinite(wall) && wall > 0 && wall < 50) out.wall = wall; }
+  return out;
+}
+/** 取消物料 / 产品：清掉自动带出的规格型号、尺寸，以及表内的标准值与上下限（这张单还不知道是哪个规格） */
+function clearSpec(f) {
+  // 只清「系统自己带出来过」的值：规格能对上物料主数据、尺寸能对上某款物料的口径×高；手写的自定义值保留
+  const specAuto = MASTER.materials.find(x => x.spec && x.spec === f.header.spec);
+  if (specAuto) f.header.spec = '';
+  const size = String(f.header.size || '').trim();
+  if (size && MASTER.materials.some(x => x.dims && x.dims.mouth && x.dims.height && `Φ${x.dims.mouth}×${x.dims.height}mm` === size)) f.header.size = '';
+  f.items.forEach(it => (it.dims || []).forEach(d => { if (d.key) { d.std = null; d.lo = null; d.hi = null; } }));
+}
 /** 按规格型号带出标准值，按 ±% 算上下限 */
 function resolveSpec(f) {
   const m = materialOf(f.header.material || f.header.product);
   const dims = (m && m.dims) || {};
+  const hasDims = Object.keys(dims).length > 0;
+  /* 表头的「规格型号 / 尺寸」跟着物料收口，避免「尺寸 Φ70×80、规格型号 Φ78×85」自相矛盾；
+     没有 φ×高 的物料（彩盒/蜡）只清掉旧的 Φ 格式尺寸，不动用户手写的其它写法 */
+  if (m) {
+    if (m.spec) f.header.spec = m.spec;
+    if (m.dims && m.dims.mouth && m.dims.height) f.header.size = `Φ${m.dims.mouth}×${m.dims.height}mm`;
+    else if (/^[Φφ]?\s*[\d.]+\s*[×xX*]\s*[\d.]+\s*(mm)?$/i.test(String(f.header.size || '').trim())) f.header.size = '';
+  }
   f.items.forEach(it => (it.dims || []).forEach(d => {
-    if (d.key && dims[d.key] !== undefined) d.std = dims[d.key];
-    if (d.pct !== undefined && d.pct !== null && filled(d.std)) {
+    if (!d.key) return;                                    // 「容量」这类没有 key 的维度不自动带出
+    if (dims[d.key] !== undefined) d.std = dims[d.key];
+    else if (hasDims) { d.std = null; d.lo = null; d.hi = null; }   // 换了物料且新物料没有这一维度 → 清掉上一款残留；
+    else return;                                           // 没选物料时一律不动，避免把用户手填的标准值清掉
+    if (d.pct !== undefined && d.pct !== null && filled(d.pct) && filled(d.std)) {
       d.lo = +(d.std * (1 - d.pct / 100)).toFixed(3); d.hi = +(d.std * (1 + d.pct / 100)).toFixed(3);
-    }
+    } else if (d.std === null) { d.lo = null; d.hi = null; }
   }));
   // 巡检读数（液面高度、称重等）也按产品规格带出标准值和上下限
   f.items.forEach(it => {
@@ -1024,25 +1062,77 @@ function freshState() {
   _seed = 20261123;
   const templates = clone(DEFAULT_TEMPLATES);
   const demo = buildDemo(templates);
-  return { templates, ...demo, anomalyStatus: demoAnomalyStatus(demo.forms) };
+  return { templates, ...demo, anomalyStatus: demoAnomalyStatus(demo.forms), tplDrafts: {} };
 }
 function loadState() {
-  try { const raw = localStorage.getItem(STORE_KEY); if (raw) return JSON.parse(raw); } catch (e) { /* 读不到就用演示数据 */ }
+  try {
+    const raw = localStorage.getItem(STORE_KEY);
+    if (raw) { const o = JSON.parse(raw) || {}; o.tplDrafts = o.tplDrafts || {}; return o; }   // 旧存档没有 tplDrafts 时给空对象，别让它变 null
+  } catch (e) { /* 读不到就用演示数据 */ }
   return freshState();
 }
 const store = reactive({
   role: (() => { try { return localStorage.getItem('qc-proto-role') || 'inspector'; } catch (e) { return 'inspector'; } })(),
   factory: '示例工厂（越南）',
   lang: 'zh',
+  storageFull: false,   // 本地存储是否已满（满了新数据只在本会话）
   showVi: (() => { try { return localStorage.getItem('qc-proto-vi') !== '0'; } catch (e) { return true; } })(),
   settings: { warnRate: 90, warnConsecutive: 2, photoMaxKB: 800, keepYears: 3, allowAlbum: true, anomalyHours: { CR: 1, MAJ: 2, MIN: 4 } },
   ...loadState(),
 });
 let _saveWarned = false;
-watch(() => [store.forms, store.templates, store.ncrs, store.logs, store.anomalyStatus], () => {
-  try { localStorage.setItem(STORE_KEY, JSON.stringify({ forms: store.forms, templates: store.templates, ncrs: store.ncrs, logs: store.logs, anomalyStatus: store.anomalyStatus })); }
-  catch (e) { if (!_saveWarned) { _saveWarned = true; console.warn('本地存储已满，新拍照片仅本次会话保留'); } }
-}, { deep: true });
+function persistNow() {
+  try {
+    localStorage.setItem(STORE_KEY, JSON.stringify({ forms: store.forms, templates: store.templates, ncrs: store.ncrs, logs: store.logs, anomalyStatus: store.anomalyStatus, tplDrafts: store.tplDrafts }));
+    store.storageFull = false;
+    _saveWarned = false;
+    return true;
+  } catch (e) {
+    /* 配额满了：不能只写 console（用户看不见）。明确告知 + 引导导出备份，避免刷新后静默丢数据 */
+    store.storageFull = true;
+    if (!_saveWarned) {
+      _saveWarned = true;
+      const EP = window.ElementPlus;
+      if (EP && EP.ElNotification) EP.ElNotification({
+        title: '浏览器存储已满：新数据只保留在本次会话',
+        message: '刷新或关掉页面后，刚才拍的照和改动会丢。请到「系统管理」点「导出备份」保存一份，再清理旧单据或把「照片压缩目标」调小。',
+        type: 'error', duration: 0,
+      });
+      console.warn('本地存储已满：', e && e.name, e && e.message);
+    }
+    return false;
+  }
+}
+watch(() => [store.forms, store.templates, store.ncrs, store.logs, store.anomalyStatus, store.tplDrafts], persistNow, { deep: true });
+
+/** 当前占用（KB），给系统管理显示 */
+function storageUsageKB() {
+  try { return Math.round((localStorage.getItem(STORE_KEY) || '').length / 1024); } catch (e) { return -1; }
+}
+/** 把本机全部数据导出成 JSON 备份（存储满了之后这是唯一的保命手段） */
+function exportBackup() {
+  const data = {
+    exportedAt: nowStr(), schema: STORE_KEY,
+    forms: store.forms, templates: store.templates, ncrs: store.ncrs, logs: store.logs,
+    anomalyStatus: store.anomalyStatus, tplDrafts: store.tplDrafts, settings: store.settings,
+  };
+  const a = document.createElement('a');
+  let url = '';
+  try {
+    const text = JSON.stringify(data);                       // 大对象可能抛 RangeError，必须一起兜住
+    url = URL.createObjectURL(new Blob([text], { type: 'application/json;charset=utf-8' }));
+    a.href = url; a.download = `质检数据备份_${ymdCompact(new Date())}.json`;
+    document.body.appendChild(a);                             // 部分内网浏览器不认未入 DOM 的链接
+    a.click();
+    a.remove();
+    ElementPlus.ElMessage.success('已触发下载，请确认浏览器下载栏里确实有文件');
+  } catch (e) {
+    ElementPlus.ElMessage.error('导出失败：' + (e && e.message ? e.message : '未知错误') + '（数据没有丢，仍在浏览器里）');
+  } finally {
+    a.remove();
+    if (url) setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+}
 watch(() => store.role, r => { try { localStorage.setItem('qc-proto-role', r); } catch (e) { } });
 watch(() => store.showVi, v => { try { localStorage.setItem('qc-proto-vi', v ? '1' : '0'); } catch (e) { } });
 

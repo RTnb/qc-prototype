@@ -34,11 +34,23 @@ Pages.Ledger = {
       if (EMBEDDED) { embeddedNotice('下载 Excel 文件'); return; }
       const head = ['单号', '表单编号', '类型', '日期', '供应商/客户/车间', '物料/产品', '规格型号', '订单号', '数量', '抽样数', 'CR', 'MAJ', 'MIN', '不良率', '检验结果', '不良项', '检验员', '审核人', '照片数', '处置', '状态'];
       const lines = this.rows.map(f => [f.no, f.docNo, f.type, f.date, formSubject(f), formObject(f), f.header.spec, f.header.order, this.qty(f) ?? '', this.n(f) ?? '', this.lv(f, 'CR'), this.lv(f, 'MAJ'), this.lv(f, 'MIN'), this.rate(f), f.result ? RESULTS[f.result].zh : '', f.mainDefect, f.inspector, f.reviewer, f.photoCount, f.ncrResult || '', STATUS[f.status].label]);
-      const csv = '﻿' + [head, ...lines].map(r => r.map(x => `"${String(x ?? '').replace(/"/g, '""')}"`).join(',')).join('\r\n');
+      const cell = x => {
+        let s = String(x ?? '');
+        if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;   // 防 Excel 把自由文本当公式执行
+        return '"' + s.replace(/"/g, '""') + '"';
+      };
+      const csv = '\ufeff' + [head, ...lines].map(r => r.map(cell).join(',')).join('\r\n');
       const a = document.createElement('a');
-      a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
-      a.download = `检验台账_${ymd(new Date())}.csv`; a.click();
-      ElementPlus.ElMessage.success(`已导出 ${lines.length} 行（Excel 可直接打开）`);
+      const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+      try {
+        a.href = url;
+        a.download = `检验台账_${ymd(new Date())}.csv`; a.click();
+        ElementPlus.ElMessage.success(`已导出 ${lines.length} 行（Excel 可直接打开）`);
+      } catch (e) {
+        ElementPlus.ElMessage.error('导出失败：' + (e && e.message ? e.message : '未知错误'));
+      } finally {
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      }
     },
   },
   template: `

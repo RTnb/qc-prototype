@@ -10,12 +10,14 @@ Pages.Analytics = {
     forms() { const from = new Date(); from.setDate(from.getDate() - this.days + 1); return store.forms.filter(f => f.result && f.date >= ymd(from)); },
     kpi() {
       const r = t => { const a = this.forms.filter(f => f.type === t); return a.length ? +(a.filter(f => f.result === 'OK').length / a.length * 100).toFixed(1) : null; };
-      const ip = this.forms.filter(f => f.type === 'IPQC'); const tot = ip.reduce((s, f) => s + f.patrolTotal, 0), ng = ip.reduce((s, f) => s + f.patrolNg, 0);
+      const ip = this.forms.filter(f => f.type === 'IPQC'); const tot = ip.reduce((s, f) => s + (f.patrolTotal || 0), 0), ng = ip.reduce((s, f) => s + (f.patrolNg || 0), 0);
+      const ri = r('IQC'), rf = r('FQC');
+      const low = v => v !== null && v < store.settings.warnRate;   // 无数据（null）不预警
       return [
         { label: '检验单总数', value: this.forms.length, unit: '张' },
-        { label: '进料批次合格率', value: r('IQC'), unit: '%', warn: r('IQC') < store.settings.warnRate },
+        { label: '进料批次合格率', value: ri, unit: '%', warn: low(ri) },
         { label: '巡检不良率（项次）', value: tot ? +(ng / tot * 100).toFixed(2) : 0, unit: '%' },
-        { label: '成品一次合格率 FPY', value: r('FQC'), unit: '%', warn: r('FQC') < store.settings.warnRate },
+        { label: '成品一次合格率 FPY', value: rf, unit: '%', warn: low(rf) },
         { label: '未关闭不合格单', value: store.ncrs.filter(n => n.status !== '已关闭').length, unit: '张' },
       ];
     },
@@ -150,7 +152,7 @@ Pages.Templates = {
     <div class="toolbar"><el-radio-group v-model="type"><el-radio-button value="">全部</el-radio-button><el-radio-button v-for="(t,k) in TYPES" :key="k" :value="k">{{ k }}</el-radio-button></el-radio-group></div>
     <div class="tpl-grid">
       <div v-for="t in rows" :key="t.id" class="tpl-card" @click="go('/templates/'+t.id)">
-        <div class="tpl-top"><span><TypeTag :type="t.type" /> <span class="doc-no">{{ t.docNo }}</span></span><el-tag size="small" :type="t.status==='已发布'?'success':'info'">{{ t.status }}</el-tag></div>
+        <div class="tpl-top"><span><TypeTag :type="t.type" /> <span class="doc-no">{{ t.docNo }}</span></span><span><el-tag v-if="store.tplDrafts && store.tplDrafts[t.id]" size="small" type="warning">有草稿</el-tag> <el-tag size="small" :type="t.status==='已发布'?'success':'info'">{{ t.status }}</el-tag></span></div>
         <div class="tpl-name">{{ t.name }}</div>
         <div class="tpl-meta" v-if="store.showVi && t.nameVi">{{ t.nameVi }}</div>
         <div class="tpl-bind">{{ bindText(t) }}</div>
@@ -168,11 +170,15 @@ Pages.Designer = {
   setup() { return { store, TYPES, FIELD_TYPES, MASTER, AQL_LEVELS, LEVELS, LEVEL_KEYS, SAMPLING_METHODS, go, isPatrol, uid }; },
   data() {
     const src = store.templates.find(t => t.id === this.params.id);
-    return { src, tpl: src ? clone(src) : null, sel: null };
+    const draft = src && store.tplDrafts ? store.tplDrafts[src.id] : null;
+    return { src, tpl: src ? clone(draft || src) : null, sel: null };
   },
   computed: {
     pv() { const m = {}; (this.tpl?.items || []).forEach(it => { m[it.id] = Vue.reactive(blankValue(it, 1)); }); return m; },
-    dirty() { return JSON.stringify(this.tpl) !== JSON.stringify(this.src); },
+    /* 草稿和「已发布」比，而不是和当前编辑内容比 */
+    draftBase() { return (this.src && store.tplDrafts && store.tplDrafts[this.src.id]) || this.src; },
+    dirty() { return JSON.stringify(this.tpl) !== JSON.stringify(this.draftBase); },
+    hasDraft() { return !!(this.src && store.tplDrafts && store.tplDrafts[this.src.id]); },
     canEdit() { return ['manager', 'admin'].includes(store.role); },
     parts() { return (this.tpl && this.tpl.parts) || null; },
     palette() { return Object.entries(FIELD_TYPES).filter(([k]) => this.tpl.type === 'IPQC' ? ['check', 'reading', 'text', 'photo'].includes(k) : !['check', 'reading', 'select'].includes(k)); },
@@ -189,20 +195,28 @@ Pages.Designer = {
     toggleFixed(on) { this.tpl.plan.fixed = on ? { n: 5, ac: { CR: 0, MAJ: 1, MIN: 1 } } : null; },
     save(publish) {
       const t = this.tpl;
-      if (publish) { t.version = (this.src.version || 0) + 1; t.status = '已发布'; }
+      if (!store.tplDrafts) store.tplDrafts = {};
       t.updatedAt = ymd(new Date());
-      Object.assign(this.src, clone(t));
-      addLog(publish ? '发布模版' : '保存模版', t.id, publish ? 'v' + t.version : '');
-      ElementPlus.ElMessage.success(publish ? `已发布 v${t.version}；历史单据仍保留原版本` : '已保存');
+      if (publish) {
+        t.version = (this.src.version || 0) + 1; t.status = '已发布';
+        Object.assign(this.src, clone(t));          // 只有发布才覆盖已发布版本
+        delete store.tplDrafts[this.src.id];        // 草稿作废
+        addLog('发布模版', t.id, 'v' + t.version);
+        ElementPlus.ElMessage.success(`已发布 v${t.version}；历史单据仍保留原版本，新单据按新版走`);
+      } else {
+        store.tplDrafts[this.src.id] = clone(t);    // 草稿单独存：不动已发布版本，新单据不会用到半成品
+        addLog('保存模版草稿', t.id, '');
+        ElementPlus.ElMessage.success('草稿已保存（未发布，不影响新单据用的标准）');
+      }
     },
   },
   template: `
   <div class="page designer" v-if="tpl">
     <div class="page-head">
-      <h2><span class="back" @click="go('/templates')"><el-icon><ArrowLeft /></el-icon></span><TypeTag :type="tpl.type" /> <span class="doc-no">{{ tpl.docNo }}</span> {{ tpl.name }} <small class="muted mono">v{{ src.version }}</small></h2>
+      <h2><span class="back" @click="go('/templates')"><el-icon><ArrowLeft /></el-icon></span><TypeTag :type="tpl.type" /> <span class="doc-no">{{ tpl.docNo }}</span> {{ tpl.name }} <small class="muted mono">v{{ src.version }}</small> <el-tag v-if="hasDraft" size="small" type="warning" style="margin-left:8px">草稿未发布</el-tag></h2>
       <div class="head-actions" v-if="canEdit">
         <el-button :disabled="!dirty" @click="save(false)">保存草稿</el-button>
-        <el-button type="primary" @click="save(true)">发布为 v{{ (src.version||0)+1 }}</el-button>
+        <el-button type="primary" :disabled="src.status==='已发布' && !dirty && !hasDraft" @click="save(true)">发布为 v{{ (src.version||0)+1 }}</el-button>
       </div>
     </div>
     <el-alert v-if="!canEdit" type="info" :closable="false" class="mb" title="模版由质量经理维护。切换右上角角色为「质量经理」可编辑。" />
@@ -426,11 +440,15 @@ Pages.System = {
       ],
     };
   },
-  computed: { logs() { return store.logs.slice(0, 200); } },
-  methods: { reset() { ElementPlus.ElMessageBox.confirm('将清除本机保存的所有原型数据并重新生成演示数据。', '重置演示数据', { type: 'warning' }).then(() => { resetDemo(); ElementPlus.ElMessage.success('已重置'); }).catch(() => { }); } },
+  computed: { logs() { return store.logs.slice(0, 200); }, usage() { return storageUsageKB(); } },
+  methods: {
+    reset() { ElementPlus.ElMessageBox.confirm('将清除本机保存的所有原型数据并重新生成演示数据。', '重置演示数据', { type: 'warning' }).then(() => { resetDemo(); ElementPlus.ElMessage.success('已重置'); }).catch(() => { }); },
+    backup() { exportBackup(); },
+  },
   template: `
   <div class="page">
-    <div class="page-head"><h2>系统管理</h2><el-button type="danger" plain @click="reset">重置演示数据</el-button></div>
+    <div class="page-head"><h2>系统管理</h2><div class="head-actions"><span class="muted small" style="margin-right:10px">本机已用 {{ usage }} KB</span><el-button @click="backup">导出备份</el-button><el-button type="danger" plain @click="reset">重置演示数据</el-button></div></div>
+    <el-alert v-if="store.storageFull" type="error" :closable="false" class="mb" title="浏览器存储已满：新数据只保留在本次会话，刷新会丢。请先点「导出备份」，再清理旧单据或把照片压缩目标调小。" />
     <el-tabs v-model="tab">
       <el-tab-pane label="用户" name="users">
         <el-table :data="users" stripe>
