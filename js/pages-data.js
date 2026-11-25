@@ -19,9 +19,17 @@ Pages.Ledger = {
   },
   methods: {
     qty(f) { return f.type === 'IPQC' ? f.header.orderQty : f.header.qty; },
-    n(f) { return f.type === 'IPQC' ? f.rounds.reduce((s, r) => s + (Number(r.qty) || 0), 0) : (f.plan && f.plan.n); },
+    n(f) {
+      if (f.type === 'IPQC') return f.rounds.reduce((s, r) => s + (Number(r.qty) || 0), 0);
+      if (f.plans) return `${(f.plans.S1 || {}).n ?? '—'} + ${(f.plans.L1 || {}).n ?? '—'}`;
+      return f.plan && f.plan.n;
+    },
     lv(f, L) { return f.levelCount ? f.levelCount.total[L] : 0; },
-    rate(f) { if (f.type === 'IPQC') return f.patrolRate + '%'; const n = this.n(f); return n ? (f.defects / n * 100).toFixed(1) + '%' : '—'; },
+    rate(f) {
+      if (f.type === 'IPQC') return f.patrolRate + '%';
+      const n = f.plans ? (((f.plans.S1 || {}).n || 0) + ((f.plans.L1 || {}).n || 0)) : this.n(f);
+      return n ? (f.defects / n * 100).toFixed(1) + '%' : '—';
+    },
     exportCsv() {
       if (EMBEDDED) { embeddedNotice('下载 Excel 文件'); return; }
       const head = ['单号', '表单编号', '类型', '日期', '供应商/客户/车间', '物料/产品', '规格型号', '订单号', '数量', '抽样数', 'CR', 'MAJ', 'MIN', '不良率', '检验结果', '不良项', '检验员', '审核人', '照片数', '处置', '状态'];
@@ -77,7 +85,23 @@ Pages.Report = {
   computed: {
     f() { return store.forms.find(x => x.no === this.params.no); },
     ncr() { return this.f && store.ncrs.find(n => n.no === this.f.ncrNo); },
-    title() { return { IQC: ['进料检验报告', 'BÁO CÁO KIỂM TRA NGUYÊN LIỆU ĐẦU VÀO'], IPQC: ['杯蜡在线巡检稽查表', 'BẢNG KIỂM TRA TUẦN KIỂM SÁP LY TRÊN CHUYỀN'], FQC: ['成品检验报告', 'BÁO CÁO KIỂM NGHIỆM THÀNH PHẨM'] }[this.f.type]; },
+    title() {
+      if (this.f.reportTitle) return [this.f.reportTitle, this.f.reportTitleVi || ''];
+      return { IQC: ['进料检验报告', 'BÁO CÁO KIỂM TRA NGUYÊN LIỆU ĐẦU VÀO'], IPQC: ['杯蜡在线巡检稽查表', 'BẢNG KIỂM TRA TUẦN KIỂM SÁP LY TRÊN CHUYỀN'], FQC: ['成品检验报告', 'BÁO CÁO KIỂM NGHIỆM THÀNH PHẨM'] }[this.f.type];
+    },
+    is3() { return !!(this.f.tplParts && this.f.plans); },
+    /* 三段式来料表表头（和纸质表顺序一致） */
+    info3() {
+      const f = this.f, h = f.header;
+      const mat = materialName(h.material);
+      return [
+        [['订单号', 'Số đơn hàng', h.order], ['货号', 'Mã hàng', h.material ? `${h.material} ${mat}`.trim() : mat]],
+        [['尺寸', 'Kích thước', h.size], ['供应商', 'Nhà cung cấp', supplierName(h.supplier)]],
+        [['来料数量（批量）', 'Số lượng nhập (lô)', h.qty], ['到货日期', 'Ngày nhập hàng', h.receiveDate]],
+        [['检验日期', 'Ngày kiểm tra', f.date], ['检验员', 'Nhân viên kiểm tra', f.inspector]],
+        [['检验状态', 'Trạng thái kiểm tra', h.visit || '首次'], ['检验结论', 'Kết luận kiểm tra', f.result ? RESULTS[f.result].zh : '']],
+      ];
+    },
     info() {
       const f = this.f, h = f.header;
       if (f.type === 'IQC') return [[['供应商', 'Nhà cung ứng', supplierName(h.supplier)], ['物料名称', 'Tên nguyên vật liệu', materialName(h.material)], ['规格型号', 'Mã quy cách', h.spec]],
@@ -139,6 +163,38 @@ Pages.Report = {
     print() { if (EMBEDDED) { embeddedNotice('打印或另存 PDF'); return; } window.print(); },
     back() { history.length > 1 ? history.back() : go('/ledger'); },
     box(on) { return on ? '☑' : '☐'; },
+    partPlan(key) { return (this.f.plans || {})[key] || {}; },
+    /* 三段式：某个照片位的清单 */
+    grpPhotos(name) {
+      const f = this.f;
+      return (f.basePhotoDefs || []).filter(d => (d.group || '') === name).map(d => ({ ...d, photos: f.basePhotos[d.key] || [] }));
+    },
+    /* 三段式：某一段的报告行（含分组行） */
+    rowsOf(key) {
+      const f = this.f, plan = (f.plans || {})[key];
+      const out = []; let g = null;
+      const zh = r => r === 'NA' ? '不适用' : r === 'OK' ? '合格' : r === 'NG' ? '不合格' : '—';
+      f.items.filter(it => partOf(it) === key && !['sign', 'photo', 'text', 'select'].includes(it.type)).forEach(it => {
+        const v = f.values[it.id], res = itemResult(it, v);
+        if (it.other && (!v.judge || v.judge === 'NA')) return;
+        if (it.group && it.group !== g) { g = it.group; out.push({ head: true, name: it.group, vi: it.groupVi }); }
+        let result = zh(res);
+        if (it.type === 'table') {
+          const st = tableStats(it, v.rows || []);
+          result = st.map((s, j) => `${it.dims[j].name.replace(/\s*(mm|g|ml)$/, '')} ${s.min}~${s.max}`).join('；') + (res ? `（${zh(res)}）` : '');
+        }
+        if (v.note) result += `：${v.note}`;
+        if (v.defect) result += `［${defectName(v.defect)}］`;
+        out.push({
+          code: it.code, name: it.other ? `其他${v.otherName ? '：' + v.otherName : ''}` : it.name, vi: it.vi,
+          std: it.other ? '' : it.remark, stdVi: it.other ? '' : it.remarkVi,
+          lvText: it.levels ? it.levels.join('/') : it.level, level: v.level || it.level,
+          checkQty: it.checkQty || (plan && !plan.single ? plan.n : ''),
+          result, res, qty: res === 'NG' ? (v.qty || itemQty(it, v)) : 0, photos: v.photos || [],
+        });
+      });
+      return out;
+    },
     cellText(it, k) { const c = this.f.values[it.id].cells[k]; if (!cellFilled(it, c)) return ''; return it.type === 'check' ? (c.v === 'OK' ? '✓' : '✗') : c.v + (c.ng ? ' ✗' : ''); },
     cellBad(it, k) { return cellNG(it, this.f.values[it.id].cells[k]); },
   },
@@ -160,12 +216,126 @@ Pages.Report = {
         <div class="qr"><div class="qr-grid"><i v-for="(c,i) in qrCells" :key="i" :class="{on:c}"></i></div><small>{{ f.docNo }}</small></div>
       </div>
 
-      <table class="info-table">
+      <table class="info-table" v-if="!is3">
         <tr v-for="(row,i) in info" :key="i"><template v-for="c in row" :key="c[0]"><th>{{ c[0] }}<small>{{ c[1] }}</small></th><td>{{ c[2] ?? '' }}</td></template></tr>
       </table>
+      <table class="info-table info3" v-else>
+        <tr v-for="(row,i) in info3" :key="i"><template v-for="c in row" :key="c[0]"><th>{{ c[0] }}<small>{{ c[1] }}</small></th><td>{{ c[2] ?? '' }}</td></template></tr>
+      </table>
+
+      <!-- 纸质表表头下的「来料产品照片」 -->
+      <div v-if="is3" class="ph-strip">
+        <figure v-for="g in grpPhotos('来料产品照片')" :key="g.key">
+          <div class="ph-slot">
+            <el-image v-if="g.photos.length" :src="srcOf(g.photos[0])" :preview-src-list="allSrc" :initial-index="allSrc.indexOf(srcOf(g.photos[0]))" fit="cover" preview-teleported hide-on-click-modal />
+            <span v-else class="no-photo">未拍</span>
+          </div>
+          <figcaption><b>{{ g.name }}</b><small>{{ g.vi }}</small><span v-if="g.photos.length > 1" class="muted"> 共 {{ g.photos.length }} 张</span></figcaption>
+        </figure>
+      </div>
+
+      <!-- 三段式来料检验报告（SL/QR-35 中越新版） -->
+      <template v-if="is3">
+        <table class="plan2-table">
+          <thead>
+            <tr>
+              <th rowspan="2" style="width:52px">类别<small>Loại</small></th>
+              <th rowspan="2" style="width:22%">检验水平<small>Mức kiểm tra</small></th>
+              <th rowspan="2">适用项目<small>Hạng mục áp dụng</small></th>
+              <th rowspan="2" style="width:64px">样本字码<small>Mã cỡ mẫu</small></th>
+              <th rowspan="2" style="width:72px">抽样数量<small>Số mẫu</small></th>
+              <th colspan="3">缺陷等级 / AQL / Ac / Re<small>Mức lỗi / AQL / Ac / Re</small></th>
+            </tr>
+            <tr><th>CR</th><th>MAJ</th><th>MIN</th></tr>
+          </thead>
+          <tbody>
+            <template v-for="p in f.tplParts.filter(x => !x.single)" :key="p.key">
+              <tr>
+                <td rowspan="3" class="c b">{{ p.code }}</td>
+                <td rowspan="3">{{ p.level === 'S-1' ? '特殊检验水平 S-1' : '一般检验水平 I (Level I)' }}<small>{{ p.levelVi }}</small></td>
+                <td rowspan="3">{{ p.scope }}<small>{{ p.scopeVi }}</small></td>
+                <td rowspan="3" class="c b">{{ partPlan(p.key).code || '—' }}</td>
+                <td rowspan="3" class="c n-cell">{{ partPlan(p.key).n ?? '—' }}</td>
+                <td v-for="L in LEVEL_KEYS" :key="'a' + L">{{ partPlan(p.key).levels[L].aql }}</td>
+              </tr>
+              <tr><td v-for="L in LEVEL_KEYS" :key="'ac' + L">接收 {{ partPlan(p.key).levels[L].ac ?? '—' }}</td></tr>
+              <tr><td v-for="L in LEVEL_KEYS" :key="'re' + L">拒收 {{ partPlan(p.key).levels[L].re ?? '—' }}</td></tr>
+            </template>
+          </tbody>
+        </table>
+        <div class="part-note" v-if="f.tplNote">{{ f.tplNote }}<div class="vi-note" v-if="store.showVi && f.tplNoteVi">{{ f.tplNoteVi }}</div></div>
+
+        <template v-for="p in f.tplParts" :key="p.key">
+          <div class="part-head"><b>{{ p.title }}</b><small>{{ p.titleVi }}</small></div>
+          <table class="result-table part-table">
+            <thead><tr>
+              <th style="width:44px">序号<small>STT</small></th>
+              <th>检验项目<small>Hạng mục kiểm tra</small></th>
+              <th style="width:27%">标准 / 公差 / 接收标准<small>Tiêu chuẩn / dung sai</small></th>
+              <th style="width:56px">缺陷等级<small>Mức lỗi</small></th>
+              <th style="width:54px">检查数量<small>Số lượng</small></th>
+              <th style="width:21%">检查结果 / 实测 / 不良描述<small>Kết quả / đo</small></th>
+              <template v-if="!p.single"><th v-for="L in LEVEL_KEYS" :key="L" style="width:38px">{{ L === 'CR' ? 'Cr' : L === 'MAJ' ? 'Maj' : 'Min' }}</th></template>
+            </tr></thead>
+            <tbody>
+              <template v-for="(r,i) in rowsOf(p.key)" :key="i">
+                <tr v-if="r.head" class="grp"><td :colspan="p.single ? 6 : 9">{{ r.name }} <small>{{ r.vi }}</small></td></tr>
+                <tr v-else :class="{ng: r.res === 'NG'}">
+                  <td class="c">{{ r.code }}</td>
+                  <td>{{ r.name }}<small v-if="r.vi">{{ r.vi }}</small></td>
+                  <td class="std">{{ r.std }}<small v-if="r.stdVi">{{ r.stdVi }}</small></td>
+                  <td class="c small">{{ r.lvText }}</td>
+                  <td class="c">{{ r.checkQty || '—' }}</td>
+                  <td :class="{red: r.res === 'NG', 'na-cell': r.res === 'NA'}">{{ r.result }}</td>
+                  <template v-if="!p.single"><td v-for="L in LEVEL_KEYS" :key="L" class="c b red">{{ r.level === L && r.qty ? r.qty : '' }}</td></template>
+                </tr>
+              </template>
+              <tr class="sum" v-if="!p.single">
+                <td colspan="6">缺陷累计（{{ p.code }}）<small>Tổng số lỗi</small></td>
+                <td v-for="L in LEVEL_KEYS" :key="'s' + L" class="c b">{{ lc.parts[p.key][L] }}</td>
+              </tr>
+              <tr class="judge-row" v-if="!p.single">
+                <td colspan="6">{{ p.code }} 判定<small>Phán định {{ p.code }}</small></td>
+                <td colspan="3" class="c b" :class="{red: lc.parts[p.key].rej}">{{ lc.parts[p.key].rej ? '不合格（拒收）' : '合格（接收）' }}</td>
+              </tr>
+              <tr class="judge-row" v-else>
+                <td colspan="5">第三部分判定<small>Phán định phần 3</small></td>
+                <td class="c b" :class="{red: lc.parts[p.key].rej}">{{ lc.parts[p.key].rej ? '不合格（整批拒收）' : '合格' }}</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <!-- 热冲击补充记录：每只单独判定 -->
+          <div v-if="p.single && f.shock" class="shock-block">
+            <table class="result-table shock">
+              <thead>
+                <tr><th colspan="6" class="l shock-cap">方法 / 依据 <span class="cap-vi">Phương pháp</span>：{{ f.shock.method || '—' }}</th></tr>
+                <tr>
+                  <th style="width:50px">样品<small>Mẫu</small></th>
+                  <th style="width:130px">结果（合格 / 不合格）<small>Kết quả</small></th>
+                  <th>现象（裂 / 渗漏等）<small>Hiện tượng</small></th>
+                  <th style="width:112px">工艺浇注温度 ℃<small>Nhiệt độ rót</small></th>
+                  <th style="width:100px">实测温度 ℃<small>Nhiệt đo</small></th>
+                  <th style="width:130px">备注<small>Ghi chú</small></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(r,k) in f.shock.rows" :key="k" :class="{ng: r.ok === 'NG'}">
+                  <td class="c">{{ k + 1 }}</td>
+                  <td class="c">{{ r.ok === 'OK' ? '合格 Đạt' : r.ok === 'NG' ? '不合格 Không đạt' : '—' }}</td>
+                  <td>{{ r.phenomenon }}</td>
+                  <td class="c">{{ r.pourTemp ?? '' }}</td>
+                  <td class="c">{{ r.temp ?? '' }}</td>
+                  <td>{{ r.note }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </template>
+      </template>
 
       <!-- 进料 / 成品 -->
-      <template v-if="f.type!=='IPQC'">
+      <template v-else-if="f.type!=='IPQC'">
         <table class="plan-table" v-if="f.plan">
           <tr>
             <th rowspan="2" class="l">抽样计划 <small>Kế hoạch rút kiểm</small>
@@ -236,13 +406,24 @@ Pages.Report = {
       </template>
 
       <table class="foot-table">
-        <tr><td colspan="2">
+        <tr><td :colspan="is3 ? 4 : 2">
           检验结果 <small>Kết quả kiểm tra</small>：
           <span v-for="(r,k) in RESULTS" :key="k" class="opt" :class="{on: f.result===k}">{{ box(f.result===k) }} {{ r.zh }} <small>{{ r.vi }}</small></span>
           <span class="who">检验员 <small>Nhân viên kiểm tra</small>：<img v-if="signItem" :src="signItem" class="sign-img" /><b v-else>{{ f.inspector }}</b></span>
-          <span class="who">审核人 <small>Nhân viên xét duyệt</small>：<b>{{ f.reviewer || '' }}</b></span>
+          <span v-if="!is3" class="who">审核人 <small>Nhân viên xét duyệt</small>：<b>{{ f.reviewer || '' }}</b></span>
           <span class="stamp" v-if="f.result" :class="f.result.toLowerCase()">{{ RESULTS[f.result].zh }}</span>
         </td></tr>
+        <template v-if="is3">
+          <tr><th>检验员 / 日期<small>Nhân viên kiểm tra / Ngày</small></th><td>{{ f.inspector }} / {{ f.date }}</td>
+            <th>供应商确认 / 日期<small>Nhà cung cấp xác nhận / Ngày</small></th><td>—</td></tr>
+          <tr><th>不合格（拒收）处理措施<small>Biện pháp xử lý hàng không đạt (trả về)</small></th>
+            <td colspan="3"><span v-for="d in DISPOSITIONS.IQC" :key="d" class="opt" :class="{on: ncr && ncr.disposition===d}">{{ box(ncr && ncr.disposition===d) }} {{ d }}</span>
+              <span v-if="ncr && ncr.action" class="small">　{{ ncr.action }}</span></td></tr>
+          <tr><th>负责人 / 日期<small>Người phụ trách / Ngày</small></th><td>{{ ncr ? (ncr.owner || '') : '' }}</td>
+            <th>审批 / 日期<small>Phê duyệt / Ngày</small></th><td>{{ f.reviewer || '' }}<template v-if="f.reviewedAt">　{{ f.reviewedAt }}</template></td></tr>
+          <tr><th>备注<small>Ghi chú</small></th><td colspan="3">{{ f.header.remark }}</td></tr>
+        </template>
+        <template v-else>
         <tr v-if="f.type==='FQC'"><th>不合格处理<small>Xử lý hàng không đạt</small></th>
           <td><span v-for="d in DISPOSITIONS[f.type]" :key="d" class="opt" :class="{on: ncr && ncr.disposition===d}">{{ box(ncr && ncr.disposition===d) }} {{ d }}</span>
             <div v-if="ncr && ncr.action" class="small">{{ ncr.action }}</div></td></tr>
@@ -253,18 +434,33 @@ Pages.Report = {
             <span class="who">确认人 <small>Người xác nhận</small>：<b>{{ ncr ? ncr.confirmer : '' }}</b>　日期 <small>Ngày</small>：<b>{{ ncr ? ncr.closedAt : '' }}</b></span></td></tr>
         <tr v-if="f.type!=='FQC'"><th>结果跟进<small>Theo dõi kết quả</small></th><td>{{ ncr ? ncr.action : '' }}<span v-if="ncr" class="muted small">（{{ ncr.no }} · {{ ncr.status }}）</span></td></tr>
         <tr><th>备注<small>Ghi chú</small></th><td>{{ f.header.remark }}<div v-if="f.tplNote" class="small">{{ f.tplNote }}<br><span class="muted">{{ f.tplNoteVi }}</span></div></td></tr>
+        </template>
       </table>
 
-      <h3>{{ f.type==='FQC' ? '图片' : '基础信息照片' }}<small>{{ f.type==='FQC' ? 'Hình ảnh' : 'Hình ảnh thông tin cơ bản' }}</small></h3>
-      <template v-for="sec in baseSections" :key="sec.name">
-        <div v-if="sec.name" class="pg-sec">{{ sec.name }} <small>{{ sec.vi }}</small></div>
+      <template v-if="!is3">
+        <h3>{{ f.type==='FQC' ? '图片' : '基础信息照片' }}<small>{{ f.type==='FQC' ? 'Hình ảnh' : 'Hình ảnh thông tin cơ bản' }}</small></h3>
+        <template v-for="sec in baseSections" :key="sec.name">
+          <div v-if="sec.name" class="pg-sec">{{ sec.name }} <small>{{ sec.vi }}</small></div>
+          <div class="pg-list base">
+            <template v-for="g in sec.items" :key="g.name">
+              <figure v-for="(p,i) in g.photos" :key="p.id">
+                <img :src="srcOf(p)" />
+                <figcaption><b>{{ g.no }}. {{ g.name }}<template v-if="g.photos.length>1"> ({{ i+1 }})</template></b> {{ g.vi }}<br>{{ p.time }} · {{ p.by }}</figcaption>
+              </figure>
+              <figure v-if="!g.photos.length"><div class="no-photo">未拍</div><figcaption><b>{{ g.no }}. {{ g.name }}</b> {{ g.vi }}</figcaption></figure>
+            </template>
+          </div>
+        </template>
+      </template>
+      <template v-else>
+        <h3>图片<small>Hình ảnh</small></h3>
         <div class="pg-list base">
-          <template v-for="g in sec.items" :key="g.name">
+          <template v-for="g in grpPhotos('图片')" :key="g.key">
             <figure v-for="(p,i) in g.photos" :key="p.id">
               <img :src="srcOf(p)" />
-              <figcaption><b>{{ g.no }}. {{ g.name }}<template v-if="g.photos.length>1"> ({{ i+1 }})</template></b> {{ g.vi }}<br>{{ p.time }} · {{ p.by }}</figcaption>
+              <figcaption><b>{{ g.name }}<template v-if="g.photos.length>1"> ({{ i+1 }})</template></b> {{ g.vi }}<br>{{ p.time }} · {{ p.by }}</figcaption>
             </figure>
-            <figure v-if="!g.photos.length"><div class="no-photo">未拍</div><figcaption><b>{{ g.no }}. {{ g.name }}</b> {{ g.vi }}</figcaption></figure>
+            <figure v-if="!g.photos.length"><div class="no-photo">未拍</div><figcaption><b>{{ g.name }}</b> {{ g.vi }}</figcaption></figure>
           </template>
         </div>
       </template>

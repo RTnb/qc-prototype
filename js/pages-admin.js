@@ -174,13 +174,14 @@ Pages.Designer = {
     pv() { const m = {}; (this.tpl?.items || []).forEach(it => { m[it.id] = Vue.reactive(blankValue(it, 1)); }); return m; },
     dirty() { return JSON.stringify(this.tpl) !== JSON.stringify(this.src); },
     canEdit() { return ['manager', 'admin'].includes(store.role); },
-    palette() { return Object.entries(FIELD_TYPES).filter(([k]) => this.tpl.type === 'IPQC' ? ['check', 'reading', 'text', 'photo'].includes(k) : !['check', 'reading'].includes(k)); },
+    parts() { return (this.tpl && this.tpl.parts) || null; },
+    palette() { return Object.entries(FIELD_TYPES).filter(([k]) => this.tpl.type === 'IPQC' ? ['check', 'reading', 'text', 'photo'].includes(k) : !['check', 'reading', 'select'].includes(k)); },
   },
   methods: {
     add(type) {
       const last = this.tpl.items[this.tpl.items.length - 1] || {};
       const base = { measure: { std: 10, lo: 9.9, hi: 10.1, unit: 'mm' }, table: { samples: 5, sampling: 'fixed', dims: [{ name: '尺寸', key: '', pct: 3, std: 10 }] }, photo: { minPhotos: 1, level: '' }, text: { required: false, level: '' }, sign: { level: '' }, reading: { unit: '', lo: null, hi: null } }[type] || {};
-      const it = I('新' + FIELD_TYPES[type].label, type, { group: last.group || '', groupVi: last.groupVi || '', ...base });
+      const it = I('新' + FIELD_TYPES[type].label, type, { group: last.group || '', groupVi: last.groupVi || '', part: last.part, ...base });
       this.tpl.items.push(it); this.sel = it.id;
     },
     move(i, d) { const a = this.tpl.items; const j = i + d; if (j < 0 || j >= a.length) return; [a[i], a[j]] = [a[j], a[i]]; },
@@ -236,6 +237,14 @@ Pages.Designer = {
             <el-button size="small" :icon="'Plus'" @click="(tpl.basePhotos = tpl.basePhotos || []).push({ key: 'p' + uid(), name: '', vi: '', min: 1 })">添加照片位</el-button>
           </el-form>
         </el-card>
+        <el-card shadow="never" class="panel" v-if="parts">
+          <template #header>分段抽样（纸质表三段）</template>
+          <div v-for="p in parts" :key="p.key" class="part-edit">
+            <b>{{ p.code }}</b> <span class="muted small">{{ p.method }}</span>
+            <div class="small">{{ p.title }}</div>
+          </div>
+          <p class="muted small" style="margin:8px 0 0">每段的样本数、AQL 和接收 / 拒收数由系统按抬头“来料数量（批量）”自动算，不在模版里改。</p>
+        </el-card>
         <el-card shadow="never" class="panel" v-if="tpl.plan">
           <template #header>抽样计划</template>
           <el-form label-position="top" size="small" :disabled="!canEdit">
@@ -289,6 +298,7 @@ Pages.Designer = {
           <el-form v-if="sel===it.id" class="field-edit" label-position="top" size="small" :disabled="!canEdit" @click.stop>
             <div class="fe-grid">
               <el-form-item label="序号"><el-input v-model="it.code" /></el-form-item>
+              <el-form-item v-if="parts" label="所属部分"><el-select v-model="it.part"><el-option v-for="p in parts" :key="p.key" :label="p.code + ' · ' + p.method" :value="p.key" /></el-select></el-form-item>
               <el-form-item label="检验员可选等级（如 MAJ/MIN）"><el-select v-model="it.levels" multiple clearable placeholder="固定等级"><el-option v-for="L in LEVEL_KEYS" :key="L" :label="L" :value="L" /></el-select></el-form-item>
               <el-form-item label="缺陷等级"><el-select v-model="it.level" clearable><el-option v-for="L in LEVEL_KEYS" :key="L" :label="L+' '+LEVELS[L].zh" :value="L" /></el-select></el-form-item>
               <el-form-item label="分组（中文）"><el-input v-model="it.group" placeholder="如 A 外箱" /></el-form-item>

@@ -173,6 +173,8 @@ Pages.Form = {
   created() { this.load(); },
   watch: {
     baseSig() { if (this.f && this.editable) linkCoverPhotos(this.f); },
+    shockSig() { this.syncShock(); },
+    postSig(nv) { if (this.f && this.editable) this.onPostType(JSON.parse(nv || 'null')); },
     /* 发现异常立即上报：自动保存单据、登记异常、通知 QC 主管，不等提交 */
     anomalyKeys(nv) {
       if (!this.f || !this.editable) return;
@@ -206,7 +208,7 @@ Pages.Form = {
       const out = [];
       this.f.items.filter(i => !isPatrol(i)).forEach(it => {
         let b = out[out.length - 1];
-        if (!b || b.group !== it.group) { b = { group: it.group, vi: it.groupVi, items: [] }; out.push(b); }
+        if (!b || b.group !== it.group) { b = { group: it.group, vi: it.groupVi, part: it.part, items: [] }; out.push(b); }
         b.items.push(it);
       });
       return out;
@@ -226,6 +228,12 @@ Pages.Form = {
       return out;
     },
     baseSig() { return this.f ? JSON.stringify(Object.values(this.f.basePhotos || {}).map(a => a.length)) : ''; },
+    shockSig() { return this.f && this.f.shock ? JSON.stringify(this.f.shock.rows) : ''; },
+    /* 后加工类型（下拉）变化 → 联动 P 项 / 附着力项的“不适用” */
+    postSig() {
+      const it = this.f && this.f.items.find(i => i.type === 'select');
+      return it ? JSON.stringify(this.f.values[it.id].value) : '';
+    },
     photoProgress() { // 还缺照片的项目数
       const rule = photoRule(this.f);
       const lack = this.f.items.filter(it => { const v = this.f.values[it.id]; return (v.photos || []).length < photoNeed(it, v, rule) || defectPhotoMissing(it, v); }).length
@@ -249,16 +257,40 @@ Pages.Form = {
       }
     },
     back() { history.length > 1 ? history.back() : go('/inspect/' + this.f.type); },
+    partInfo(key) { return (this.f.tplParts || []).find(p => p.key === key) || { title: '', titleVi: '', single: false }; },
     recalc() { recalcPlan(this.f); },
     switchTpl(id) { applyTemplate(this.f, store.templates, store.templates.find(t => t.id === id)); recalcPlan(this.f); },
     onSupplier() { if (this.f.header.material && !this.materials.find(m => m.code === this.f.header.material)) this.f.header.material = ''; },
     onMaterial() {
       const m = MASTER.materials.find(x => x.code === this.f.header.material);
-      if (m) { if (!this.f.header.supplier) this.f.header.supplier = m.supplier; this.f.header.spec = m.spec; }
+      if (m) { if (!this.f.header.supplier) this.f.header.supplier = m.supplier; this.f.header.spec = m.spec; if (m.dims && m.dims.mouth) this.f.header.size = `Φ${m.dims.mouth}×${m.dims.height}mm`; }
       const tpl = matchTemplate(this.f, store.templates);
       if (tpl && tpl.id !== this.f.tplId) { applyTemplate(this.f, store.templates, tpl); ElementPlus.ElMessage.info(`已按物料自动切换模版：${tpl.docNo} ${tpl.name}`); }
       else resolveSpec(this.f);
       recalcPlan(this.f);
+    },
+    /* 后加工类型：选“无”时，后加工外观 P1–P10 与附着力 D4–D6 自动判不适用；改回有后加工则清掉 NA */
+    onPostType(val) {
+      const arr = Array.isArray(val) ? val : [];
+      const none = !arr.length || arr.includes('无');
+      // 选了「无」就不要同时还挂着喷涂 / 花纸
+      const it0 = this.f.items.find(i => i.type === 'select');
+      if (it0 && none && arr.length > 1) this.f.values[it0.id].value = ['无'];
+      ['P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'P8', 'P9', 'P10', 'D4', 'D5', 'D6'].forEach(c => {
+        const it = this.f.items.find(i => i.code === c); if (!it) return;
+        const v = this.f.values[it.id]; if (!v) return;
+        if (none && v.judge !== 'NG') v.judge = 'NA';
+        else if (!none && v.judge === 'NA') v.judge = '';
+      });
+    },
+    /* 热冲击有一只不合格，D1 自动判 NG */
+    syncShock() {
+      if (!this.f || !this.f.shock || !this.editable) return;
+      const it = this.f.items.find(i => i.code === 'D1'); if (!it) return;
+      const v = this.f.values[it.id]; if (!v) return;
+      const bad = this.f.shock.rows.filter(r => r.ok === 'NG');
+      if (bad.length) { v.judge = 'NG'; if (!v.note) v.note = `热冲击 ${bad.length} 只不合格${bad[0].phenomenon ? '：' + bad[0].phenomenon : ''}`; }
+      else if (v.judge === 'NG' && (v.note || '').startsWith('热冲击')) { v.judge = ''; v.note = ''; }
     },
     onProduct() {
       const p = MASTER.products.find(x => x.code === this.f.header.product);
@@ -348,15 +380,19 @@ Pages.Form = {
           </div></template>
           <el-form label-position="top" class="hdr-grid" :disabled="!editable">
             <template v-if="f.type==='IQC'">
-              <el-form-item required><template #label><Bi zh="供应商" vi="Nhà cung ứng" inline /></template>
+              <el-form-item required><template #label><Bi zh="订单号" vi="Số đơn hàng" inline /></template><el-input v-model="f.header.order" placeholder="可扫码" /></el-form-item>
+              <el-form-item required><template #label><Bi zh="货号 / 物料" vi="Mã hàng / nguyên liệu" inline /></template>
+                <el-select v-model="f.header.material" filterable placeholder="选择玻璃杯（自动带出尺寸、模版和标准）" @change="onMaterial"><el-option v-for="m in materials" :key="m.code" :label="m.name" :value="m.code" /></el-select></el-form-item>
+              <el-form-item required><template #label><Bi zh="供应商" vi="Nhà cung cấp" inline /></template>
                 <el-select v-model="f.header.supplier" filterable placeholder="选择供应商" @change="onSupplier"><el-option v-for="s in MASTER.suppliers" :key="s.code" :label="s.name" :value="s.code" /></el-select></el-form-item>
-              <el-form-item required><template #label><Bi zh="物料名称" vi="Tên nguyên vật liệu" inline /></template>
-                <el-select v-model="f.header.material" filterable placeholder="选择物料（自动带出模版和规格）" @change="onMaterial"><el-option v-for="m in materials" :key="m.code" :label="m.name" :value="m.code" /></el-select></el-form-item>
-              <el-form-item><template #label><Bi zh="规格型号" vi="Mã quy cách" inline /></template><el-input v-model="f.header.spec" /></el-form-item>
-              <el-form-item required><template #label><Bi zh="来料数量" vi="Số lượng nhập" inline /></template><el-input-number v-model="f.header.qty" :min="0" :controls="false" @change="recalc" style="width:100%" /></el-form-item>
-              <el-form-item><template #label><Bi zh="接收日期" vi="Ngày tiếp nhận" inline /></template><el-date-picker v-model="f.header.receiveDate" value-format="YYYY-MM-DD" style="width:100%" /></el-form-item>
+              <el-form-item><template #label><Bi zh="尺寸" vi="Kích thước" inline /></template><el-input v-model="f.header.size" placeholder="如 Φ78×85mm" /></el-form-item>
+              <el-form-item required><template #label><Bi zh="来料数量（批量）" vi="Số lượng nhập (lô)" inline /></template><el-input-number v-model="f.header.qty" :min="0" :controls="false" @change="recalc" style="width:100%" /></el-form-item>
+              <el-form-item><template #label><Bi zh="到货日期" vi="Ngày nhập hàng" inline /></template><el-date-picker v-model="f.header.receiveDate" value-format="YYYY-MM-DD" style="width:100%" /></el-form-item>
               <el-form-item><template #label><Bi zh="检验日期" vi="Ngày kiểm tra" inline /></template><el-input :model-value="f.date" disabled /></el-form-item>
-              <el-form-item><template #label><Bi zh="订单号" vi="Số PO" inline /></template><el-input v-model="f.header.order" placeholder="可扫码" /></el-form-item>
+              <el-form-item><template #label><Bi zh="检验员" vi="Nhân viên kiểm tra" inline /></template><el-input :model-value="f.inspector" disabled /></el-form-item>
+              <el-form-item><template #label><Bi zh="检验状态" vi="Trạng thái kiểm tra" inline /></template>
+                <el-radio-group v-model="f.header.visit"><el-radio-button value="首次">首次</el-radio-button><el-radio-button value="复验">复验</el-radio-button></el-radio-group></el-form-item>
+              <el-form-item><template #label><Bi zh="规格型号" vi="Mã quy cách" inline /></template><el-input v-model="f.header.spec" /></el-form-item>
               <el-form-item><template #label>批号 <small class="muted">（系统追溯用，选填）</small></template><el-input v-model="f.header.lot" /></el-form-item>
             </template>
             <template v-else-if="f.type==='IPQC'">
@@ -389,7 +425,7 @@ Pages.Form = {
 
         <!-- 基础信息照片：每张单据必拍，合格也要拍 -->
         <el-card v-if="f.basePhotoDefs && f.basePhotoDefs.length" shadow="never" class="panel">
-          <template #header><div class="panel-h"><Bi zh="基础信息照片" vi="Hình ảnh thông tin cơ bản" inline />
+          <template #header><div class="panel-h"><Bi :zh="f.plans ? '来料照片' : '基础信息照片'" :vi="f.plans ? 'Hình ảnh hàng nhập' : 'Hình ảnh thông tin cơ bản'" inline />
             <span class="muted small">合格也要拍；拍完自动用到对应的检验项，不用重复拍</span></div></template>
           <template v-for="g in baseGroups" :key="g.name">
             <div v-if="g.name" class="bp-group"><Bi :zh="g.name" :vi="g.vi" inline /></div>
@@ -413,12 +449,44 @@ Pages.Form = {
             <span class="spacer"></span>
             <el-button v-if="editable" size="small" @click="allOk">未判定的全部 OK</el-button>
           </div>
-          <div v-for="b in blocks" :key="b.group" class="item-block">
+          <div v-for="(b,i) in blocks" :key="b.group" class="item-block">
+            <div v-if="f.plans && b.part && (i===0 || blocks[i-1].part !== b.part)" class="part-h">
+              <Bi :zh="partInfo(b.part).title" :vi="partInfo(b.part).titleVi" />
+              <span v-if="!partInfo(b.part).single" class="part-n">
+                抽 {{ (f.plans[b.part]||{}).n ?? '—' }} 只（字码 {{ (f.plans[b.part]||{}).code || '—' }}）
+                · AQL CR 0 / MAJ 2.5 / MIN 2.5
+              </span>
+              <span v-else class="part-n">单项判定：任一项不合格整批拒收</span>
+            </div>
             <div v-if="b.group" class="block-h"><Bi :zh="b.group" :vi="b.vi" inline /></div>
             <div class="items">
-              <ItemField v-for="(it,i) in b.items" :key="it.id" :index="i+1" :item="it" :val="f.values[it.id]" :readonly="!editable" :form-no="f.no" :inspector="f.inspector" :ng-photo="f.ngPhoto" :photo-all="f.itemPhoto==='all'" :pool="pool" />
+              <ItemField v-for="(it,j) in b.items" :key="it.id" :index="j+1" :item="it" :val="f.values[it.id]" :readonly="!editable" :form-no="f.no" :inspector="f.inspector" :ng-photo="f.ngPhoto" :photo-all="f.itemPhoto==='all'" :pool="pool" />
             </div>
           </div>
+
+          <!-- 第三部分：热冲击补充记录（每只单独判定） -->
+          <el-card v-if="f.shock" shadow="never" class="panel">
+            <template #header><div class="panel-h">
+              <Bi zh="热冲击补充记录（每只单独判定；温度 / 时间按指导书或工艺单填写）" vi="Ghi thêm sốc nhiệt (phán định từng ly)" inline />
+              <span class="muted small">任一只不合格 → D1 判 NG，整批拒收</span></div></template>
+            <div class="shock-method">
+              <span class="side-lbl" style="margin:0">方法 / 依据 <small class="muted">Phương pháp</small></span>
+              <el-input v-model="f.shock.method" :disabled="!editable" placeholder="如 GB/T 6578 / 工艺单编号" style="max-width:340px" size="small" />
+            </div>
+            <table class="shock-table">
+              <thead><tr><th style="width:56px">样品<small>Mẫu</small></th><th style="width:150px">结果（合格 / 不合格）<small>Kết quả</small></th><th>现象（裂 / 渗漏等）<small>Hiện tượng</small></th><th style="width:130px">工艺浇注温度 ℃<small>Nhiệt độ rót</small></th><th style="width:120px">实测温度 ℃<small>Nhiệt đo</small></th><th style="width:150px">备注<small>Ghi chú</small></th></tr></thead>
+              <tbody>
+                <tr v-for="(r,k) in f.shock.rows" :key="k" :class="{ng: r.ok==='NG'}">
+                  <td class="c">{{ k+1 }}</td>
+                  <td class="c"><el-select v-model="r.ok" :disabled="!editable" size="small" style="width:120px"><el-option value="OK" label="合格" /><el-option value="NG" label="不合格" /></el-select></td>
+                  <td><el-input v-model="r.phenomenon" :disabled="!editable" size="small" placeholder="无 / 裂纹 / 渗漏" /></td>
+                  <td class="c"><el-input-number v-model="r.pourTemp" :disabled="!editable" size="small" :controls="false" class="tiny" /></td>
+                  <td class="c"><el-input-number v-model="r.temp" :disabled="!editable" size="small" :controls="false" class="tiny" /></td>
+                  <td><el-input v-model="r.note" :disabled="!editable" size="small" /></td>
+                </tr>
+              </tbody>
+            </table>
+          </el-card>
         </template>
 
         <!-- 巡检表 -->
@@ -450,6 +518,28 @@ Pages.Form = {
       <aside class="form-side">
         <el-card shadow="never" class="panel sticky">
           <template #header><div class="panel-h"><span>判定汇总</span></div></template>
+
+          <!-- 三段式来料表：每段各自的抽样数、AQL 和缺陷累计 -->
+          <template v-if="f.plans">
+            <div v-for="p in f.tplParts" :key="p.key" class="part-sum">
+              <div class="side-lbl"><Bi :zh="p.short || p.title" :vi="p.shortVi || p.titleVi" inline /></div>
+              <template v-if="!p.single">
+                <div class="sum-row"><span>抽样数量 <small class="muted" v-if="f.plans[p.key].code">字码 {{ f.plans[p.key].code }}</small></span><b>{{ f.plans[p.key].n ?? '—' }}</b></div>
+                <table class="lv-table">
+                  <thead><tr><th></th><th>AQL</th><th>接收</th><th>拒收</th><th>缺陷</th></tr></thead>
+                  <tbody><tr v-for="L in LEVEL_KEYS" :key="L" :class="{rej: summary.levelReject[p.key] && summary.levelReject[p.key][L]}">
+                    <td><LevelBadge :level="L" /></td><td>{{ f.plans[p.key].levels[L].aql }}</td>
+                    <td>{{ f.plans[p.key].levels[L].ac ?? '—' }}</td><td>{{ f.plans[p.key].levels[L].re ?? '—' }}</td>
+                    <td><b>{{ summary.levelCount.parts[p.key][L] }}</b></td>
+                  </tr></tbody>
+                </table>
+              </template>
+              <template v-else>
+                <div class="sum-row"><span>单项判定</span>
+                  <b :class="{red: summary.levelCount.parts[p.key].ng}">{{ summary.levelCount.parts[p.key].ng ? summary.levelCount.parts[p.key].ng + ' 项不合格' : '全部合格' }}</b></div>
+              </template>
+            </div>
+          </template>
 
           <template v-if="f.type!=='IPQC' && f.plan">
             <div class="side-lbl"><Bi zh="抽样计划" vi="Kế hoạch rút kiểm" inline /></div>

@@ -132,6 +132,58 @@
   @page { size: A4; margin: 12mm; }
 }
 
+/* ============ 三段式来料检验报告（SL/QR-35 中越新版，2026-11-25 纸质表） ============ */
+.part-h { margin: 20px 0 10px; padding: 8px 12px; background: linear-gradient(90deg, #eef3fb, #f7f9fc); border-left: 3px solid var(--primary); border-radius: 4px; font-weight: 700; font-size: 13.5px; }
+.part-h .vi { font-weight: 400; color: var(--ink-3); font-size: 11.5px; }
+.part-h .part-n { display: block; font-weight: 500; color: var(--primary); font-size: 11.5px; margin-top: 3px; font-variant-numeric: tabular-nums; }
+.part-sum { border-top: 1px dashed var(--line); padding-top: 8px; margin-top: 10px; }
+.part-sum:first-child { border-top: 0; margin-top: 0; padding-top: 0; }
+.part-edit { padding: 6px 0; border-bottom: 1px dashed var(--line); }
+.part-edit:last-of-type { border-bottom: 0; }
+.tol-ask { color: var(--amber); }
+.tol-ask .std-input { width: 54px; }
+.shock-method { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
+.shock-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.shock-table th, .shock-table td { border: 1px solid #d8dde6; padding: 5px 6px; text-align: left; }
+.shock-table th { background: #f4f6f9; font-weight: 600; }
+.shock-table th small { display: block; font-weight: 400; color: var(--ink-3); font-size: 10.5px; }
+.shock-table td.c { text-align: center; }
+.shock-table .el-input-number { width: 100%; }
+.shock-table tr.ng td { background: var(--ng-bg); color: var(--ng); }
+.sheet .part-table { margin: 2px 0 12px; font-size: 11.5px; }
+.info-table.info3 th { width: 13%; }
+.info-table.info3 td { width: 37%; }
+.ph-strip { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 12px 0 2px; }
+.ph-strip figure { margin: 0; }
+.ph-strip .ph-slot { height: 104px; border: 1px solid #cfd5df; border-radius: 3px; overflow: hidden; display: grid; place-items: center; background: #fafbfd; }
+.ph-strip .ph-slot .el-image { width: 100%; height: 100%; }
+.ph-strip figcaption { font-size: 10.5px; color: var(--ink-2); text-align: center; padding-top: 3px; }
+.ph-strip figcaption small { display: block; color: var(--ink-3); font-size: 10px; }
+.plan2-table { width: 100%; border-collapse: collapse; font-size: 12px; margin: 10px 0; }
+.plan2-table th, .plan2-table td { border: 1px solid #cfd5df; padding: 4px 5px; text-align: center; vertical-align: middle; }
+.plan2-table th { background: #f4f6f9; font-weight: 600; }
+.plan2-table th small, .plan2-table td small { display: block; font-weight: 400; color: var(--ink-3); font-size: 10px; }
+.plan2-table .n-cell { font-size: 16px; font-weight: 700; }
+.plan2-table th.l, .plan2-table td.l { text-align: left; }
+.part-note { font-size: 11px; line-height: 1.6; color: var(--ink-2); background: #f8f9fb; border: 1px solid var(--line); border-radius: 4px; padding: 8px 10px; margin: 6px 0 14px; }
+.part-note .vi-note { margin-top: 4px; color: var(--ink-3); font-size: 10.5px; }
+.part-head { margin: 16px 0 6px; font-size: 13px; font-weight: 700; padding: 6px 10px; background: #eef3fb; border-left: 3px solid var(--primary); border-radius: 3px; }
+.part-head small { display: block; font-weight: 400; color: var(--ink-3); font-size: 10.5px; margin-top: 2px; }
+.result-table tr.judge-row td { background: #f8f9fb; font-weight: 700; }
+.result-table td.na-cell { color: var(--ink-3); }
+.shock-block { margin: 2px 0 14px; }
+.shock-block .shock-cap { text-align: left; font-weight: 500; background: #f8f9fb; }
+.shock-block .shock-cap .cap-vi { color: var(--ink-3); font-size: 10.5px; font-weight: 400; }
+
+@media (max-width: 767px) {
+  .ph-strip { grid-template-columns: repeat(2, 1fr); }
+  .shock-table { font-size: 11px; }
+  .plan2-table { font-size: 10.5px; }
+  .part-h { font-size: 12.5px; }
+  /* 纸质表格列多，手机上横向滚动，不压成豆腐块 */
+  .sheet .result-table, .sheet .plan2-table, .sheet .info-table { min-width: 640px; }
+}
+
 /* 在线发布：手机刘海区域 */
 .topbar { top: env(safe-area-inset-top, 0px); }
 body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 30; background: var(--panel); }

@@ -197,14 +197,21 @@ Widgets.ItemField = {
       const v = Number(raw); if (!raw || isNaN(v)) return;
       d.std = v; if (filled(d.pct)) { d.lo = +(v * (1 - d.pct / 100)).toFixed(3); d.hi = +(v * (1 + d.pct / 100)).toFixed(3); }
     },
+    /* 纸质表“公差自填”：检验员当场填 ±%，系统据此算上下限并自动标红超差 */
+    setTol(d, raw) {
+      const v = Number(raw); if (!raw || isNaN(v) || v <= 0) return;
+      d.pct = v;
+      if (filled(d.std)) { d.lo = +(d.std * (1 - v / 100)).toFixed(3); d.hi = +(d.std * (1 + v / 100)).toFixed(3); }
+    },
   },
   template: `
   <div class="item-card" :class="{ng: res==='NG'}">
     <div class="item-head">
       <span class="item-idx">{{ item.code || index }}</span>
       <LevelBadge :level="item.other ? '' : (item.levels ? item.levels.join('/') : item.level)" />
-      <span class="item-name"><Bi :zh="item.name" :vi="item.vi" /><i v-if="item.required && ['judge','measure','table'].includes(item.type)" class="req">*</i></span>
+      <span class="item-name"><Bi :zh="item.name" :vi="item.vi" /><i v-if="item.required && ['judge','measure','table','select'].includes(item.type)" class="req">*</i></span>
       <span class="spacer"></span>
+      <span v-if="item.checkQty" class="item-type">查 {{ item.checkQty }} 只</span>
       <span v-if="item.sampling==='fixed'" class="item-type">5PCS</span>
       <span v-if="res" class="item-res" :class="res.toLowerCase()">{{ res }}<template v-if="res==='NG'"> ×{{ ngQty }}</template></span>
     </div>
@@ -226,10 +233,21 @@ Widgets.ItemField = {
       <a v-if="!readonly && val.judge!=='NG' && !val.note && !showNote" class="note-link" @click="showNote=true">+ 检查结果</a>
     </div>
 
+    <div v-else-if="item.type==='select'" class="item-body">
+      <el-select v-model="val.value" :multiple="!!item.multiple" :disabled="readonly" placeholder="请选择" collapse-tags style="max-width:420px">
+        <el-option v-for="o in (item.options||[])" :key="o" :label="o" :value="o" />
+      </el-select>
+    </div>
+
     <div v-else-if="item.type==='table'" class="item-body table-wrap">
       <table class="sample-table">
         <thead><tr><th>样本</th><th v-for="d in item.dims" :key="d.name">{{ d.name }}
-          <template v-if="filled(d.std)"><small>{{ d.std }}<template v-if="d.pct"> ±{{ d.pct }}%</template></small><small>{{ d.lo }} ~ {{ d.hi }}</small></template>
+          <template v-if="filled(d.std)">
+            <small>{{ d.std }}<template v-if="filled(d.pct)"> ±{{ d.pct }}%</template></small>
+            <small v-if="filled(d.lo)">{{ d.lo }} ~ {{ d.hi }}</small>
+            <small v-else-if="!readonly" class="tol-ask">公差待填 <input class="std-input" type="number" step="any" placeholder="±%" @change="setTol(d, $event.target.value)" /></small>
+            <small v-else>公差未填</small>
+          </template>
           <template v-else-if="!readonly"><small class="red">标准值未带出，请按规格书填</small><input class="std-input" type="number" step="any" placeholder="标准值" @change="setStd(d, $event.target.value)" /></template>
           <small v-else>无标准值</small>
         </th></tr></thead>
