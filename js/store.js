@@ -754,6 +754,26 @@ function allPhotos(f) {
   const seen = new Set();
   return out.filter(p => { const k = p.src || (p.ph + '|' + p.hue); if (seen.has(k)) return false; seen.add(k); return true; });
 }
+/* ================= 缺陷数与判定规则（v1，全系统唯一来源） =================
+ * 1. 每一项只要填了「不良数」，就计入它所属等级（CR / MAJ / MIN）的缺陷累计。
+ *    判「合格」也可以填（纸质表是按缺陷数累计，不是按"这一项整体判了什么"）；
+ *    例：P8 判合格、不良数 2、等级 MAJ → Level I 的 MAJ 累计 +2。
+ * 2. 判「不合格」但没填不良数 → 按 1 计（不能出现"判了不合格却 0 缺陷"）。
+ * 3. 判「不适用（NA）」→ 不计入，也不 требова 填写。
+ * 4. 等级取检验员选的等级（v.level）；没选则用该项的默认等级（it.level）。
+ * 5. 判定：任一等级 累计 ≥ 该段拒收数 Re → 该段不合格；三段式进料单里，
+ *    第三部分「单项判定」任一项 NG 即整批拒收，「不适用」不计。
+ * 6. 所有显示（填单页累计、报告、台账、统计、导出）都必须调用本函数，
+ *    不允许各自再写一套 if。
+ * ======================================================================= */
+function defectQtyOf(it, v) {
+  const res = itemResult(it, v);
+  if (res === 'NA') return 0;
+  const n = Number(v && v.qty);
+  if (Number.isFinite(n) && n > 0) return n;
+  if (res === 'NG') return Math.max(1, itemQty(it, v));
+  return 0;
+}
 /** 纯计算，不改单据（页面实时显示用） */
 function summarize(f) {
   const lv = { aql: { CR: 0, MAJ: 0, MIN: 0 }, fixed: { CR: 0, MAJ: 0, MIN: 0 } };
@@ -769,8 +789,7 @@ function summarize(f) {
     const res = itemResult(it, v);
     const L = v.level || it.level || 'MAJ';
     if (res === 'NG') { ngItems++; names.push(itemLabel(it)); }
-    /* 纸质表按缺陷数累计：判合格但填了不良数（如「合格：2pcs 褶皱」）同样计入对应等级 */
-    const qty = res === 'NG' ? itemQty(it, v) : (Number(v.qty) || 0);
+    const qty = defectQtyOf(it, v);   // 规则唯一来源，见文件上方说明
     if (!qty) return;
     if (f.plans) {
       const P = parts[partOf(it)];

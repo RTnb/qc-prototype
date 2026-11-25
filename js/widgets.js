@@ -181,7 +181,7 @@ Widgets.ItemField = {
     res() { return itemResult(this.item, this.val); },
     stats() { return this.item.type === 'table' ? tableStats(this.item, this.val.rows || []) : []; },
     needPhoto() { return photoNeed(this.item, this.val, { all: this.photoAll, ng: this.ngPhoto }); },
-    ngQty() { return this.res === 'NG' ? itemQty(this.item, this.val) : 0; },
+    ngQty() { return defectQtyOf(this.item, this.val); },
   },
   methods: {
     setJudge(j) {

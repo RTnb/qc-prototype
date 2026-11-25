@@ -33,7 +33,7 @@ Pages.Analytics = {
     },
     pareto() { // 不良项 Pareto：按检验项统计缺陷数
       const cnt = {};
-      this.forms.forEach(f => f.items.forEach(it => { const v = f.values[it.id]; if (itemResult(it, v) === 'NG') { const k = itemLabel(it); cnt[k] = (cnt[k] || 0) + itemQty(it, v); } }));
+      this.forms.forEach(f => f.items.forEach(it => { const v = f.values[it.id]; const q = defectQtyOf(it, v); if (q) { const k = itemLabel(it); cnt[k] = (cnt[k] || 0) + q; } }));
       const arr = Object.entries(cnt).sort((a, b) => b[1] - a[1]).slice(0, 10);
       const total = arr.reduce((s, x) => s + x[1], 0); let acc = 0;
       return { names: arr.map(x => x[0].length > 12 ? x[0].slice(0, 12) + '…' : x[0]), vals: arr.map(x => x[1]), cum: arr.map(x => +((acc += x[1]) / total * 100).toFixed(1)) };
