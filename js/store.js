@@ -482,9 +482,9 @@ function fqcItems() {
 const TPL_FQC = {
   id: 'TPL-FQC-001', docNo: 'SL/QR-38', name: '成品检验报告', nameVi: 'Báo cáo kiểm nghiệm thành phẩm', type: 'FQC',
   version: 2, status: '已发布', updatedAt: '2026-11-24', bind: { materials: [], processes: [] }, isDefault: true, ngPhoto: true,
-  plan: { method: 'MIL-STD-105E I', aql: { CR: 0, MAJ: 2.5, MIN: 4.0 } },
+  plan: { method: 'MIL-STD-105E I', aql: { CR: 0, MAJ: 2.5, MIN: 2.5 } },
   itemPhoto: 'all', basePhotos: BASE_FQC(),
-  note: 'E1 尺寸、E2 重量、E3 容量实测 5PCS，无特殊要求按 ±5%。表上 MAJ / MIN 的 AQL 为空白，原型暂按 MAJ 2.5、MIN 4.0，可在模版中修改。等级写「MAJ/MIN」的项由检验员按实际情况选择。',
+  note: 'E1 尺寸、E2 重量、E3 容量实测 5PCS，无特殊要求按 ±5%。AQL 按 CR 0 / MAJ 2.5 / MIN 2.5（2026-11-25 吉确认），可在模版中修改。等级写「MAJ/MIN」的项由检验员按实际情况选择。',
   noteVi: 'E1 kích thước, E2 trọng lượng, E3 dung tích đo thực tế 5PCS; không có yêu cầu đặc biệt thì áp dụng +/-5%.',
   items: fqcItems(),
 };
@@ -1107,6 +1107,23 @@ function persistNow() {
 watch(() => [store.forms, store.templates, store.ncrs, store.logs, store.anomalyStatus, store.tplDrafts], persistNow, { deep: true });
 /* 首次打开先落一次盘：否则「系统管理 → 本机已用」会显示 0 KB，配额提示也失真 */
 try { if (!localStorage.getItem(STORE_KEY)) persistNow(); } catch (e) { }
+
+/* 一次性迁移：成品模版 AQL 的 MIN 4.0 → 2.5（吉 2026-11-25 确认 0 / 2.5 / 2.5）。
+   只改「还是默认值、没人动过」的那份；已经人工改过的不碰。
+   注意：已建单据的 AQL 是建单时克隆的快照，这里改模版不会影响历史报告。 */
+function migrateFqcAql() {
+  const t = store.templates.find(x => x.id === 'TPL-FQC-001');
+  if (!t || !t.plan || !t.plan.aql) return false;
+  const a = t.plan.aql;
+  if (a.MIN === 4.0 && a.MAJ === 2.5 && a.CR === 0 && (t.version || 0) <= 2) {
+    a.MIN = 2.5; t.version = (t.version || 0) + 1; t.updatedAt = ymd(new Date());
+    addLog('模版迁移', t.id, 'AQL MIN 4.0 → 2.5（吉确认 0/2.5/2.5）；历史单据仍保留建单时的 AQL');
+    persistNow();
+    return true;
+  }
+  return false;
+}
+try { migrateFqcAql(); } catch (e) { }
 
 /** 当前占用（KB），给系统管理显示 */
 function storageUsageKB() {
