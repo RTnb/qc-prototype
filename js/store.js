@@ -766,11 +766,15 @@ function summarize(f) {
     const v = f.values[it.id]; if (!v) return;
     photos += (v.photos || []).length;
     if (isPatrol(it)) (v.cells || []).slice(0, f.rounds.length).forEach(c => { if (cellFilled(it, c)) pTotal++; if (cellNG(it, c)) pNg++; });
-    if (itemResult(it, v) !== 'NG') return;
-    ngItems++; names.push(itemLabel(it));
-    const qty = itemQty(it, v), L = v.level || it.level || 'MAJ';
+    const res = itemResult(it, v);
+    const L = v.level || it.level || 'MAJ';
+    if (res === 'NG') { ngItems++; names.push(itemLabel(it)); }
+    /* 纸质表按缺陷数累计：判合格但填了不良数（如「合格：2pcs 褶皱」）同样计入对应等级 */
+    const qty = res === 'NG' ? itemQty(it, v) : (Number(v.qty) || 0);
+    if (!qty) return;
     if (f.plans) {
-      const P = parts[partOf(it)]; if (P) { P.ng++; if (!P.single) P[L] = (P[L] || 0) + qty; }
+      const P = parts[partOf(it)];
+      if (P) { if (!P.single) P[L] = (P[L] || 0) + qty; if (res === 'NG') P.ng++; }
     } else lv[it.sampling === 'fixed' ? 'fixed' : 'aql'][L] += qty;
   });
   const total = { CR: lv.aql.CR + lv.fixed.CR, MAJ: lv.aql.MAJ + lv.fixed.MAJ, MIN: lv.aql.MIN + lv.fixed.MIN };

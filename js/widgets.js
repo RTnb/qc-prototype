@@ -189,7 +189,7 @@ Widgets.ItemField = {
       this.val.judge = this.val.judge === j ? '' : j;
       if (this.val.judge === 'NG' && !this.val.qty) this.val.qty = 1;
       if (this.val.judge === 'NG' && !this.val.level) this.val.level = this.item.level;
-      if (this.val.judge !== 'NG') { this.val.qty = null; this.val.defect = ''; }
+      if (this.val.judge === 'NA') { this.val.qty = null; this.val.defect = ''; }   // 判合格也允许记不良数（纸质表按缺陷数累计）
     },
     cellNG(j, x) { return dimNG(this.item.dims[j], x); },
     filled,
@@ -288,7 +288,8 @@ Widgets.ItemField = {
       <label><span>缺陷代码</span><el-select v-model="val.defect" :disabled="readonly" placeholder="选填" clearable filterable>
         <el-option v-for="d in MASTER.defects" :key="d.code" :label="d.code+' '+d.name" :value="d.code" /></el-select></label>
     </div>
-    <div v-else-if="item.type==='judge' && (val.note || showNote)" class="item-ng">
+    <div v-else-if="item.type==='judge' && (val.note || showNote || val.judge === 'OK')" class="item-ng">
+      <label><span>不良数</span><el-input-number v-model="val.qty" :min="0" :disabled="readonly" size="default" controls-position="right" placeholder="选填" /></label>
       <label class="grow"><span>检查结果</span><el-input v-model="val.note" :disabled="readonly" placeholder="选填" /></label>
     </div>
 

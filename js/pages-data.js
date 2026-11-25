@@ -202,7 +202,7 @@ Pages.Report = {
           std: it.other ? '' : it.remark, stdVi: it.other ? '' : it.remarkVi,
           lvText: it.levels ? it.levels.join('/') : it.level, level: v.level || it.level,
           checkQty: it.checkQty || (plan && !plan.single ? plan.n : ''),
-          result, res, qty: res === 'NG' ? (v.qty || itemQty(it, v)) : 0, photos: v.photos || [],
+          result, res, qty: res === 'NG' ? (v.qty || itemQty(it, v)) : (Number(v.qty) || 0), photos: v.photos || [],
         });
       });
       return out;
