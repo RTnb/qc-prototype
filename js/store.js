@@ -1104,6 +1104,8 @@ function persistNow() {
   }
 }
 watch(() => [store.forms, store.templates, store.ncrs, store.logs, store.anomalyStatus, store.tplDrafts], persistNow, { deep: true });
+/* 首次打开先落一次盘：否则「系统管理 → 本机已用」会显示 0 KB，配额提示也失真 */
+try { if (!localStorage.getItem(STORE_KEY)) persistNow(); } catch (e) { }
 
 /** 当前占用（KB），给系统管理显示 */
 function storageUsageKB() {
