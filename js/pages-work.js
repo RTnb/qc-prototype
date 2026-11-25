@@ -221,7 +221,7 @@ Pages.Form = {
     },
     judgeItems() { return this.f.items.filter(i => ['judge', 'measure', 'table'].includes(i.type)); },
     doneCount() { return this.judgeItems.filter(i => !!itemResult(i, this.f.values[i.id])).length; },
-    materials() { return this.f.header.supplier ? MASTER.materials.filter(m => m.supplier === this.f.header.supplier) : MASTER.materials; },
+    materials() { const list = MASTER.materials.filter(m => !m.hidden); return this.f.header.supplier ? list.filter(m => m.supplier === this.f.header.supplier) : list; },
     verdict() { return this.f.result || this.summary.suggest; },
     pool() { return allPhotos(this.f); },
     baseGroups() {

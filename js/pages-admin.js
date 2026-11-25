@@ -229,7 +229,7 @@ Pages.Designer = {
             <el-form-item label="表单编号"><el-input v-model="tpl.docNo" placeholder="如 SL/QR-35" /></el-form-item>
             <el-form-item label="模版名称"><el-input v-model="tpl.name" /></el-form-item>
             <el-form-item label="越南文名称"><el-input v-model="tpl.nameVi" /></el-form-item>
-            <el-form-item v-if="tpl.type==='IQC'" label="适用物料"><el-select v-model="tpl.bind.materials" multiple collapse-tags placeholder="选择物料"><el-option v-for="m in MASTER.materials" :key="m.code" :label="m.name" :value="m.code" /></el-select></el-form-item>
+            <el-form-item v-if="tpl.type==='IQC'" label="适用物料"><el-select v-model="tpl.bind.materials" multiple collapse-tags placeholder="选择物料"><el-option v-for="m in MASTER.materials.filter(x => !x.hidden)" :key="m.code" :label="m.name" :value="m.code" /></el-select></el-form-item>
             <el-form-item label="未匹配时作为默认模版"><el-switch v-model="tpl.isDefault" /></el-form-item>
           </el-form>
         </el-card>
@@ -380,7 +380,7 @@ Pages.Master = {
     </div>
     <el-tabs v-model="tab">
       <el-tab-pane label="物料" name="materials">
-        <el-table :data="MASTER.materials" stripe>
+        <el-table :data="MASTER.materials.filter(m => !m.hidden)" stripe>
           <el-table-column prop="code" label="物料编码" width="110" /><el-table-column label="名称" min-width="150"><template #default="{row}">{{ row.name }}<small class="muted" style="display:block">{{ row.vi }}</small></template></el-table-column>
           <el-table-column prop="spec" label="规格型号" min-width="160" /><el-table-column label="规格参数（自动带出标准值）" min-width="200"><template #default="{row}">{{ dimsText(row.dims) }}</template></el-table-column>
           <el-table-column prop="unit" label="单位" width="70" /><el-table-column label="默认供应商" min-width="150"><template #default="{row}">{{ supplierName(row.supplier) }}</template></el-table-column>

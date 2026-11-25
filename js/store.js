@@ -161,8 +161,9 @@ const MASTER = {
     { code: 'S005', name: '宏达包装材料有限公司', category: '包材', contact: '孙经理', grade: 'C' },
   ],
   materials: [
-    { code: 'M-GL-01', name: '玻璃杯（透明）', vi: 'Ly thủy tinh (trong suốt)', spec: 'GL-8OZ 直身杯 Φ78×85', unit: 'PCS', supplier: 'S001', dims: { height: 85, mouth: 78, wall: 3.0, weight: 230 } },
-    { code: 'M-GL-02', name: '玻璃杯（磨砂）', vi: 'Ly thủy tinh (mờ)', spec: 'GL-12OZ 直身杯 Φ90×100', unit: 'PCS', supplier: 'S002', dims: { height: 100, mouth: 90, wall: 3.5, weight: 320 } },
+    /* 来料的玻璃只留一条：磨砂/喷涂/花纸都算后加工，在「后加工类型」里选，不再拆成两种物料 */
+    { code: 'M-GL-01', name: '玻璃杯', vi: 'Ly thủy tinh', spec: 'GL-8OZ 直身杯 Φ78×85', unit: 'PCS', supplier: 'S001', dims: { height: 85, mouth: 78, wall: 3.0, weight: 230 } },
+    { code: 'M-GL-02', name: '玻璃杯（磨砂·旧）', vi: 'Ly thủy tinh (mờ)', spec: 'GL-12OZ 直身杯 Φ90×100', unit: 'PCS', supplier: 'S002', hidden: true, dims: { height: 100, mouth: 90, wall: 3.5, weight: 320 } },
     { code: 'M-WX-01', name: '大豆蜡', vi: 'Sáp đậu nành', spec: '464 片状 20kg/箱', unit: 'KG', supplier: 'S003', dims: { size: 5, weight: 20000 } },
     { code: 'M-WK-01', name: '棉芯灯芯', vi: 'Tim đèn cotton', spec: 'CD-10 带底座 150mm', unit: 'PCS', supplier: 'S004', dims: { size: 150, weight: 0.8 } },
     { code: 'M-PK-01', name: '彩盒', vi: 'Hộp màu', spec: '8oz 四色印刷', unit: 'PCS', supplier: 'S005', dims: { size: 120, weight: 45 } },
