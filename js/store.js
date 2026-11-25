@@ -1162,6 +1162,15 @@ function migrateLoadedState(o) {
     { name: '长 mm', key: 'length', pct: 5, std: 85 }, { name: '宽 mm', key: 'width', pct: 5, std: 78 },
     { name: '高 mm', key: 'height', pct: 5, std: 85 },
   ];
+  /* 容量（C3）不是必填项（客户 2026-11-25 反馈）——存量模版也一并放宽 */
+  const relaxCapacity = t => {
+    if (!t || !Array.isArray(t.items)) return false;
+    const it = t.items.find(i => i.code === 'C3');
+    if (!it || it.required === false) return false;
+    it.required = false; t.version = Math.max(t.version || 0, 3);
+    t.updatedAt = ymd(new Date());
+    return true;
+  };
   const upgradeDims = (t, code, next) => {
     if (!t || !Array.isArray(t.items)) return false;
     const it = t.items.find(i => i.code === code);
@@ -1177,7 +1186,8 @@ function migrateLoadedState(o) {
   const fqc = (o.templates || []).find(x => x.id === 'TPL-FQC-001');
   const d1 = o.tplDrafts && o.tplDrafts['TPL-IQC-001'], d2 = o.tplDrafts && o.tplDrafts['TPL-FQC-001'];
   const dimChanged = [upgradeDims(iqc, 'C1', NEW_C1), upgradeDims(d1, 'C1', NEW_C1),
-                      upgradeDims(fqc, 'E1', NEW_E1), upgradeDims(d2, 'E1', NEW_E1)].some(Boolean);
+                      upgradeDims(fqc, 'E1', NEW_E1), upgradeDims(d2, 'E1', NEW_E1),
+                      relaxCapacity(iqc), relaxCapacity(d1), relaxCapacity(o.templates && o.templates.find(x => x.id === 'TPL-IQC-099'))].some(Boolean);
   if (a || b || dimChanged) {
     o.logs = o.logs || [];
     o.logs.unshift({ time: nowStr(), user: '系统', action: '模版迁移', target: 'TPL-FQC-001', detail: 'AQL MIN 4.0 → 2.5（吉确认 0/2.5/2.5）；历史单据仍保留建单时的 AQL' });

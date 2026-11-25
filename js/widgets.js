@@ -248,7 +248,7 @@ Widgets.ItemField = {
             <small v-else-if="!readonly" class="tol-ask">公差待填 <input class="std-input" type="number" step="any" placeholder="±%" @change="setTol(d, $event.target.value)" /></small>
             <small v-else>公差未填</small>
           </template>
-          <template v-else-if="!readonly"><small class="red">标准值未带出，请按规格书填</small><input class="std-input" type="number" step="any" placeholder="标准值" @change="setStd(d, $event.target.value)" /></template>
+          <template v-else-if="!readonly"><small :class="{red: item.required}">{{ item.required ? '标准值未带出，请按规格书填' : '标准值选填' }}</small><input class="std-input" type="number" step="any" placeholder="选填" @change="setStd(d, $event.target.value)" /></template>
           <small v-else>无标准值</small>
         </th></tr></thead>
         <tbody>
