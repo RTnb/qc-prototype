@@ -233,6 +233,98 @@ Pages.Form = {
     pool() { return allPhotos(this.f); },
     /* 表头「尺寸」与表内实测标准值不一致时当场提示（只读状态不提示） */
     sizeWarn() { return this.editable ? sizeConflict(this.f) : ''; },
+    baseGroups() {
+      const out = [];
+      (this.f.basePhotoDefs || []).forEach((d, i) => {
+        let g = out[out.length - 1];
+        if (!g || g.name !== (d.group || '')) { g = { name: d.group || '', vi: d.groupVi || '', defs: [] }; out.push(g); }
+        g.defs.push({ ...d, no: i + 1 });
+      });
+      return out;
+    },
+    baseSig() { return this.f ? JSON.stringify(Object.values(this.f.basePhotos || {}).map(a => a.length)) : ''; },
+    shockSig() { return this.f && this.f.shock ? JSON.stringify(this.f.shock.rows) : ''; },
+    /* 后加工类型（下拉）变化 → 联动 P 项 / 附着力项的“不适用” */
+    postSig() {
+      const it = this.f && this.f.items.find(i => i.type === 'select');
+      return it ? JSON.stringify(this.f.values[it.id].value) : '';
+    },
+    photoProgress() { // 还缺照片的项目数
+      const rule = photoRule(this.f);
+      const lack = this.f.items.filter(it => { const v = this.f.values[it.id]; return (v.photos || []).length < photoNeed(it, v, rule) || defectPhotoMissing(it, v); }).length
+        + (this.f.basePhotoDefs || []).filter(d => (this.f.basePhotos[d.key] || []).length < d.min).length;
+      return lack;
+    },
+  },
+  methods: {
+    load() {
+      this.showErrs = false; this.errs = [];
+      if (this.params.no === 'new') {
+        const type = this.query.type || 'IQC';
+        const f = newFormSkeleton(type, '（提交时生成）');
+        f.inspector = this.me.user;
+        applyTemplate(f, store.templates);
+        recalcPlan(f);
+        this.f = Vue.reactive(f); this.isNew = true;
+      } else {
+        this.f = store.forms.find(x => x.no === this.params.no) || null; this.isNew = false;
+        this.reviewResult = this.f ? this.f.suggest : '';
+      }
+    },
+    back() {
+      if (this.isNew && this.touched && !window.confirm('这张单还没保存，离开会丢掉已填内容和已拍照片。确定离开？')) return;
+      history.length > 1 ? history.back() : go('/inspect/' + this.f.type);
+    },
+    markTouched() { if (this.isNew) this.touched = true; },
+    partInfo(key) { return (this.f.tplParts || []).find(p => p.key === key) || { title: '', titleVi: '', single: false }; },
+    recalc() { recalcPlan(this.f); },
+    switchTpl(id) { applyTemplate(this.f, store.templates, store.templates.find(t => t.id === id)); recalcPlan(this.f); },
+    onSupplier() { if (this.f.header.material && !this.materials.find(m => m.code === this.f.header.material)) this.f.header.material = ''; },
+    onMaterial() {
+      const m = MASTER.materials.find(x => x.code === this.f.header.material);
+      if (m) { if (!this.f.header.supplier) this.f.header.supplier = m.supplier; }   // 规格/尺寸统一由 resolveSpec 收口
+      const tpl = matchTemplate(this.f, store.templates);
+      if (tpl && tpl.id !== this.f.tplId) { applyTemplate(this.f, store.templates, tpl); ElementPlus.ElMessage.info(`已按物料自动切换模版：${tpl.docNo} ${tpl.name}`); }
+      else resolveSpec(this.f);
+      // 取消选择物料：清掉自动带出的规格/尺寸和表内标准值（这张单还不知道是哪个杯子）
+      if (!m && !this.f.header.product) clearSpec(this.f);
+      recalcPlan(this.f);
+    },
+    /* 后加工类型：选“无”时，后加工外观 P1–P10 与附着力 D4–D6 自动判不适用；改回有后加工则清掉 NA */
+    onPostType(val) {
+      const arr = Array.isArray(val) ? val : [];
+      const none = !arr.length || arr.includes('无');
+      // 选了「无」就不要同时还挂着喷涂 / 花纸
+      const it0 = this.f.items.find(i => i.type === 'select');
+      if (it0 && none && arr.length > 1) this.f.values[it0.id].value = ['无'];
+      ['P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'P8', 'P9', 'P10', 'D4', 'D5', 'D6'].forEach(c => {
+        const it = this.f.items.find(i => i.code === c); if (!it) return;
+        const v = this.f.values[it.id]; if (!v) return;
+        if (none && v.judge !== 'NG') v.judge = 'NA';
+        else if (!none && v.judge === 'NA') v.judge = '';
+      });
+    },
+    /* 热冲击有一只不合格，D1 自动判 NG */
+    syncShock() {
+      if (!this.f || !this.f.shock || !this.editable) return;
+      const it = this.f.items.find(i => i.code === 'D1'); if (!it) return;
+      const v = this.f.values[it.id]; if (!v) return;
+      const bad = this.f.shock.rows.filter(r => r.ok === 'NG');
+      if (bad.length) { v.judge = 'NG'; if (!v.note) v.note = `热冲击 ${bad.length} 只不合格${bad[0].phenomenon ? '：' + bad[0].phenomenon : ''}`; }
+      else if (v.judge === 'NG' && (v.note || '').startsWith('热冲击')) { v.judge = ''; v.note = ''; }
+    },
+    /* 把解析出来的口径/杯高/壁厚回填到表内尺寸维度（C1 进料 / E1 成品），并在没有公差时把旧上下限清掉 */
+    applySizeToItems(p) {
+      this.f.items.forEach(it => (it.dims || []).forEach(d => {
+        if (!d.key || p[d.key] === undefined) return;
+        d.std = p[d.key];
+        if (filled(d.pct)) { d.lo = +(d.std * (1 - d.pct / 100)).toFixed(3); d.hi = +(d.std * (1 + d.pct / 100)).toFixed(3); }
+        else { d.lo = null; d.hi = null; }   // 没有公差就别留着上一款的上下限，否则判定会用旧限值
+      }));
+      recalcPlan(this.f);
+    },
+    /* 表头「尺寸」手改后回填标准值 */
+
     onSizeText() {
       const p = parseSizeText(this.f.header.size);
       if (!Object.keys(p).length) return;
