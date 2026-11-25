@@ -812,6 +812,32 @@ function computeSummary(f) {
   return f;
 }
 /** 提交前校验 */
+/** 表头「尺寸」文本与表内实测标准值是否矛盾，返回说明文字（'' = 没有矛盾）。
+ *  填单页提示与提交确认共用这一份判断，避免两处口径不一致。 */
+function sizeConflict(f) {
+  if (!f || !f.header) return '';
+  const txt = String(f.header.size || '').trim();
+  if (!txt) return '';
+  const p = parseSizeText(txt);
+  const names = { length: '长', width: '宽', height: '高', wall: '壁厚' };
+  const keys = ['length', 'width', 'height', 'wall'];
+  const std = {};
+  (f.items || []).forEach(it => (it.dims || []).forEach(d => { if (d.key && std[d.key] === undefined) std[d.key] = d.std; }));
+  const hasStd = keys.some(k => filled(std[k]));
+  if (!Object.keys(p).length) {
+    if (!hasStd) return '';
+    const three = /[×xX*][^×xX*]*[×xX*]/.test(txt) && !/[ΦφØø]/.test(txt);
+    return three
+      ? '表头这句像外箱 / 纸箱尺寸（三个数），不是杯子的长×宽×高；下面的标准值不会跟着它走'
+      : '表头这句认不出尺寸格式（可写 Φ78×85mm 或 80×60×90mm），下面的标准值不会跟着它走';
+  }
+  const diff = [];
+  keys.forEach(k => {
+    const n = Number(std[k]);
+    if (filled(std[k]) && Number.isFinite(n) && p[k] !== undefined && Math.abs(n - p[k]) > 1e-6) diff.push(names[k] + ' ' + std[k]);
+  });
+  return diff.length ? `表头尺寸与表内实测标准值不一致（标准 ${diff.join(' / ')}），请核对` : '';
+}
 function validateForm(f) {
   const errs = [], h = f.header;
   if (f.type === 'IQC') { if (!h.supplier) errs.push('请选择供应商'); if (!h.material) errs.push('请选择物料'); if (!h.qty) errs.push('请填写来料数量'); }
